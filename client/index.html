@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tituah</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+      <div id="hud" hidden>
+        <div class="fighter" data-slot="0">
+          <span class="name">P1</span>
+          <span class="lives"></span>
+          <span class="percent">0%</span>
+        </div>
+        <div class="title">TITUAH</div>
+        <div class="fighter" data-slot="1">
+          <span class="name">P2</span>
+          <span class="lives"></span>
+          <span class="percent">0%</span>
+        </div>
+      </div>
+      <div id="overlay">
+        <section id="menu" class="panel">
+          <p class="eyebrow">Platform fighter</p>
+          <h1>Tituah</h1>
+          <p class="blurb">Run, jump, charge a slap, and knock the other player off the stage.</p>
+          <label>
+            Name
+            <input id="name" maxlength="16" placeholder="Fighter" autocomplete="off" />
+          </label>
+          <button id="join" type="button">Find match</button>
+          <p class="hint">A / D move · Space jump · Hold click or J to charge slap</p>
+        </section>
+        <section id="waiting" class="panel" hidden>
+          <p class="eyebrow">Matchmaking</p>
+          <h2>Waiting for opponent</h2>
+          <p class="blurb">Open a second browser window and join the same server.</p>
+        </section>
+        <section id="result" class="panel" hidden>
+          <p class="eyebrow">Match over</p>
+          <h2 id="result-title">Winner</h2>
+          <button id="again" type="button">Fight again</button>
+        </section>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
