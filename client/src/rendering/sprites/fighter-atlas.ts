@@ -23,6 +23,7 @@ export interface FighterAnimationDefinition {
   frames: FighterFrame[];
   fps: number;
   loop: boolean;
+  sheet?: "fighter" | "running";
 }
 
 // Explicit regions for character_enhanced.png. The source is not a grid, so the
@@ -39,15 +40,18 @@ export const FIGHTER_ANIMATIONS: Record<FighterAnimation, FighterAnimationDefini
     ],
   },
   run: {
-    fps: 11,
+    fps: 12,
     loop: true,
+    sheet: "running",
     frames: [
-      { x: 615, y: 49, width: 134, height: 122 },
-      { x: 757, y: 49, width: 141, height: 122 },
-      { x: 910, y: 49, width: 144, height: 122 },
-      { x: 1064, y: 48, width: 149, height: 123 },
-      { x: 1222, y: 48, width: 144, height: 123 },
-      { x: 1378, y: 49, width: 146, height: 122 },
+      { x: 31, y: 27, width: 435, height: 351 },
+      { x: 520, y: 28, width: 435, height: 350 },
+      { x: 1025, y: 26, width: 438, height: 352 },
+      { x: 1514, y: 29, width: 438, height: 349 },
+      { x: 14, y: 404, width: 453, height: 365, offsetX: 8 },
+      { x: 519, y: 405, width: 441, height: 364, offsetX: 8 },
+      { x: 1020, y: 404, width: 448, height: 365, offsetX: 9 },
+      { x: 1509, y: 411, width: 464, height: 358, offsetX: 18 },
     ],
   },
   jump: {
@@ -126,4 +130,5 @@ export const FIGHTER_ANIMATIONS: Record<FighterAnimation, FighterAnimationDefini
 };
 
 export const FIGHTER_SHEET_URL = "/assets/characters/character-enhanced.png";
+export const RUNNING_SHEET_URL = "/assets/characters/running.png";
 export const FIGHTER_VISUAL_HEIGHT = 106;

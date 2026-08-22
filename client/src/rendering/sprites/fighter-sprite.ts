@@ -4,6 +4,7 @@ import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
   FIGHTER_VISUAL_HEIGHT,
+  RUNNING_SHEET_URL,
   type FighterAnimation,
 } from "./fighter-atlas.js";
 
@@ -16,9 +17,13 @@ let texturePromise: Promise<Record<FighterAnimation, Texture[]>> | null = null;
 
 function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
   if (texturePromise) return texturePromise;
-  texturePromise = Assets.load<Texture>(FIGHTER_SHEET_URL).then((sheet) => {
+  texturePromise = Promise.all([
+    Assets.load<Texture>(FIGHTER_SHEET_URL),
+    Assets.load<Texture>(RUNNING_SHEET_URL),
+  ]).then(([fighterSheet, runningSheet]) => {
     const result = {} as Record<FighterAnimation, Texture[]>;
     for (const [name, animation] of Object.entries(FIGHTER_ANIMATIONS)) {
+      const sheet = animation.sheet === "running" ? runningSheet : fighterSheet;
       result[name as FighterAnimation] = animation.frames.map(
         (frame) => new Texture({
           source: sheet.source,
