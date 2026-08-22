@@ -10,6 +10,7 @@ EC2_KEY="../keys/prometheus_key.pem"
 REMOTE_APP="/home/ec2-user/staging.tituah"
 PM2_NAME="tituah-staging"
 APP_PORT="4080"
+FIREBASE_KEY="/home/ec2-user/keys/tituah-fbd2a-firebase-adminsdk-fbsvc-ca0d3ca3a5.json"
 DOMAIN="staging.tituah.samirrodriguez.click"
 NGINX_CONF_LOCAL="scripts/nginx/staging.tituah.samirrodriguez.click.conf"
 NGINX_CONF_REMOTE="/etc/nginx/conf.d/staging.tituah.samirrodriguez.click.conf"
@@ -76,6 +77,8 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: "${APP_PORT}",
+        FIREBASE_PROJECT_ID: "tituah-fbd2a",
+        GOOGLE_APPLICATION_CREDENTIALS: "${FIREBASE_KEY}",
       },
       max_memory_restart: "300M",
       autorestart: true,
