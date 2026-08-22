@@ -5,14 +5,25 @@ import type { Session } from "./session.js";
 export class MessageHandler {
   constructor(private readonly matches: MatchManager) {}
 
-  handle(session: Session, raw: string): void {
+  async handle(session: Session, raw: string): Promise<void> {
     const message = parseClientMessage(raw);
     if (!message) return;
     session.markSeen();
 
     switch (message.type) {
       case "join":
-        this.matches.join(session, message.name);
+        try {
+          await this.matches.join(session, message.name, message.idToken);
+        } catch (error) {
+          const text = error instanceof Error ? error.message : "Join failed";
+          session.socket.send(
+            JSON.stringify({
+              type: "error",
+              code: "join_failed",
+              message: text,
+            }),
+          );
+        }
         break;
       case "input":
         this.matches.handleInput(session, message.input);

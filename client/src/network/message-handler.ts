@@ -41,6 +41,8 @@ export class MessageHandler {
       case "player_left":
         this.state.removePlayer(message.playerId);
         break;
+      case "error":
+        break;
     }
     this.onEvent(message);
   }

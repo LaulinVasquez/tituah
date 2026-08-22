@@ -3,7 +3,7 @@ import { parseServerMessage } from "@tituah/shared";
 
 function defaultSocketUrl(): string {
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
-  if (import.meta.env.DEV) return "ws://localhost:8080";
+  if (import.meta.env.DEV) return "ws://localhost:8080/ws";
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/ws`;
 }

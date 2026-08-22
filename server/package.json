@@ -6,10 +6,13 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "tsc",
+    "seed": "tsx src/scripts/seed.ts",
+    "enable-auth": "tsx src/scripts/enable-auth.ts"
   },
   "dependencies": {
     "@tituah/shared": "*",
+    "firebase-admin": "^13.6.0",
     "tsx": "^4.19.3",
     "ws": "^8.18.1"
   },

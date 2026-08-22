@@ -29,11 +29,25 @@ import {
   type PlayerInput,
   type PlayerState,
   type Projectile,
+  type MatchPlayerResult,
   type ServerMessage,
   type StageMap,
 } from "@tituah/shared";
 
 export type MatchEmitter = (playerId: string | null, message: ServerMessage) => void;
+
+export interface CombatStats {
+  knockouts: number;
+  deaths: number;
+  damageDealt: number;
+  damageTaken: number;
+  lastAttackerId: string | null;
+}
+
+export type MatchLifecycle = {
+  onStart?: (match: Match) => void;
+  onEnd?: (match: Match) => void;
+};
 
 interface ActiveHitbox {
   ownerId: string;
@@ -60,12 +74,20 @@ export class Match {
   private readonly pendingAttackStarts = new Set<string>();
   private readonly pendingAttackReleases = new Set<string>();
   private readonly activeHitboxes: ActiveHitbox[] = [];
+  private readonly combat = new Map<string, CombatStats>();
   private readonly emit: MatchEmitter;
+  private readonly lifecycle: MatchLifecycle;
 
-  constructor(id: string, emit: MatchEmitter, map: StageMap = DEFAULT_STAGE) {
+  constructor(
+    id: string,
+    emit: MatchEmitter,
+    map: StageMap = DEFAULT_STAGE,
+    lifecycle: MatchLifecycle = {},
+  ) {
     this.id = id;
     this.emit = emit;
     this.map = map;
+    this.lifecycle = lifecycle;
   }
 
   get playerCount(): number {
@@ -94,6 +116,13 @@ export class Match {
     this.scores[id] = 0;
     this.inputs.set(id, emptyInput());
     this.previousInputs.set(id, emptyInput());
+    this.combat.set(id, {
+      knockouts: 0,
+      deaths: 0,
+      damageDealt: 0,
+      damageTaken: 0,
+      lastAttackerId: null,
+    });
     return player;
   }
 
@@ -129,6 +158,7 @@ export class Match {
     this.tick = 0;
     this.time = 0;
     this.resetPlayersToSpawns();
+    this.lifecycle.onStart?.(this);
     const snapshot = this.createSnapshot();
     for (const player of this.players.values()) {
       this.emit(player.id, {
@@ -194,6 +224,7 @@ export class Match {
 
         hitbox.hitPlayerIds.add(target.id);
         const hit = applyHit(owner, target, values);
+        this.recordDamage(owner.id, target.id, hit.damage);
         hits.push(hit);
       }
     }
@@ -217,6 +248,7 @@ export class Match {
     const resolved = resolveProjectileHits(alive, [...this.players.values()]);
     this.projectiles.push(...resolved.remaining);
     for (const hit of resolved.hits) {
+      this.recordDamage(hit.attackerId, hit.targetId, hit.damage);
       this.emit(null, { type: "player_hit", ...hit });
     }
   }
@@ -285,7 +317,38 @@ export class Match {
     });
   }
 
+  combatResults(): Record<string, MatchPlayerResult> {
+    const results: Record<string, MatchPlayerResult> = {};
+    for (const [playerId, stats] of this.combat) {
+      results[playerId] = {
+        knockouts: stats.knockouts,
+        deaths: stats.deaths,
+        damageDealt: stats.damageDealt,
+        damageTaken: stats.damageTaken,
+      };
+    }
+    return results;
+  }
+
+  private recordDamage(attackerId: string, targetId: string, damage: number): void {
+    const attacker = this.combat.get(attackerId);
+    const target = this.combat.get(targetId);
+    if (attacker) attacker.damageDealt += damage;
+    if (target) {
+      target.damageTaken += damage;
+      target.lastAttackerId = attackerId;
+    }
+  }
+
   private killPlayer(player: PlayerState): void {
+    const stats = this.combat.get(player.id);
+    if (stats) {
+      stats.deaths += 1;
+      if (stats.lastAttackerId) {
+        const attacker = this.combat.get(stats.lastAttackerId);
+        if (attacker) attacker.knockouts += 1;
+      }
+    }
     player.lives -= 1;
     player.velocity.x = 0;
     player.velocity.y = 0;
@@ -356,5 +419,6 @@ export class Match {
       winnerId,
       scores: { ...this.scores },
     });
+    this.lifecycle.onEnd?.(this);
   }
 }

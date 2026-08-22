@@ -1,0 +1,85 @@
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  signOut,
+  type User,
+} from "firebase/auth";
+import type { UserProfile } from "@tituah/shared";
+import { usersRepository } from "../repositories/users.repository.js";
+import { clientAuth } from "../services/firebase/firebaseClient.js";
+
+export class AuthService {
+  user: User | null = null;
+  profile: UserProfile | null = null;
+  private readonly listeners = new Set<() => void>();
+
+  start(): void {
+    onAuthStateChanged(clientAuth(), (user) => {
+      this.user = user;
+      if (!user) {
+        this.profile = null;
+        this.emit();
+        return;
+      }
+      void this.refreshProfile().finally(() => this.emit());
+    });
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  async signIn(email: string, password: string): Promise<UserProfile> {
+    await signInWithEmailAndPassword(clientAuth(), email, password);
+    return this.ensureProfile();
+  }
+
+  async signUp(email: string, password: string, displayName: string): Promise<UserProfile> {
+    await createUserWithEmailAndPassword(clientAuth(), email, password);
+    return this.ensureProfile(displayName);
+  }
+
+  async playAsGuest(displayName: string): Promise<UserProfile> {
+    await signInAnonymously(clientAuth());
+    return this.ensureProfile(displayName);
+  }
+
+  async signOut(): Promise<void> {
+    await signOut(clientAuth());
+    this.profile = null;
+    this.emit();
+  }
+
+  async idToken(): Promise<string> {
+    const user = clientAuth().currentUser;
+    if (!user) throw new Error("Not signed in");
+    return user.getIdToken();
+  }
+
+  async ensureProfile(displayName?: string): Promise<UserProfile> {
+    this.profile = await usersRepository.ensure({
+      displayName: displayName || this.profile?.displayName,
+    });
+    this.emit();
+    return this.profile;
+  }
+
+  async refreshProfile(): Promise<UserProfile | null> {
+    const uid = clientAuth().currentUser?.uid;
+    if (!uid) {
+      this.profile = null;
+      return null;
+    }
+    this.profile = (await usersRepository.get(uid)) ?? (await this.ensureProfile());
+    return this.profile;
+  }
+
+  private emit(): void {
+    for (const listener of this.listeners) listener();
+  }
+}
+
+export const authService = new AuthService();
