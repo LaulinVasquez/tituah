@@ -13,6 +13,7 @@ import {
   isInBlastZone,
   PLAYER_LIVES,
   PLAYER_MAX_HEALTH,
+  MAX_JUMPS,
   PRIMARY_ATTACK_ID,
   RESPAWN_INVULN_TIME,
   resolveProjectileHits,
@@ -82,6 +83,7 @@ export class Match {
       velocity: { x: 0, y: 0 },
       facing: spawnIndex === 0 ? 1 : -1,
       grounded: true,
+      jumpsRemaining: MAX_JUMPS,
       health: PLAYER_MAX_HEALTH,
       damagePercent: 0,
       attackState: { type: "idle" },
@@ -290,6 +292,7 @@ export class Match {
     player.velocity.x = 0;
     player.velocity.y = 0;
     player.attackState = { type: "idle" };
+    player.jumpsRemaining = MAX_JUMPS;
     player.health = PLAYER_MAX_HEALTH;
 
     if (player.lives <= 0) {
@@ -306,6 +309,7 @@ export class Match {
     player.position = { x: spawn.x, y: spawn.y };
     player.velocity = { x: 0, y: 0 };
     player.grounded = true;
+    player.jumpsRemaining = MAX_JUMPS;
     player.damagePercent = 0;
     player.health = PLAYER_MAX_HEALTH;
     player.attackState = { type: "idle" };
@@ -325,6 +329,7 @@ export class Match {
       player.velocity = { x: 0, y: 0 };
       player.facing = player.spawnIndex === 0 ? 1 : -1;
       player.grounded = true;
+      player.jumpsRemaining = MAX_JUMPS;
       player.health = PLAYER_MAX_HEALTH;
       player.damagePercent = 0;
       player.attackState = { type: "idle" };

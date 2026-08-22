@@ -33,7 +33,7 @@ export class GameClient {
       this.state,
       this.prediction,
       this.interpolation,
-      (message) => this.onServerMessage(message.type),
+      (message) => this.onServerMessage(message),
     );
     this.socket.onMessage((message) => this.messages.handle(message));
     this.socket.onOpen(() => {
@@ -60,7 +60,14 @@ export class GameClient {
     this.socket.connect();
   }
 
-  private onServerMessage(type: string): void {
+  private onServerMessage(message: import("@tituah/shared").ServerMessage): void {
+    const type = message.type;
+    if (message.type === "player_hit") {
+      this.renderer.showHit(message.targetId, this.localTime);
+    }
+    if (message.type === "player_respawn") {
+      this.renderer.showKo(message.playerId, this.localTime);
+    }
     if (type === "welcome") {
       this.ui.showWaiting();
     }
@@ -77,6 +84,9 @@ export class GameClient {
       if (reconciled) this.state.predicted = reconciled;
     }
     if (type === "match_ended") {
+      for (const player of this.state.snapshot?.players ?? []) {
+        if (player.id !== this.state.winnerId) this.renderer.showKo(player.id, this.localTime);
+      }
       const winner = this.state.winnerId
         ? this.state.names.get(this.state.winnerId) ?? "Someone"
         : "Nobody";

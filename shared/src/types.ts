@@ -71,6 +71,7 @@ export interface PlayerState {
   velocity: Vec2;
   facing: Facing;
   grounded: boolean;
+  jumpsRemaining: number;
   health: number;
   damagePercent: number;
   attackState: AttackState;

@@ -7,7 +7,7 @@ export class GameRenderer {
   readonly app = new Application();
   private readonly world = new Container();
   private readonly platformsGfx = new Graphics();
-  private readonly playersGfx = new Graphics();
+  private readonly fighters = new Container();
   private readonly labels = new Container();
   private platforms!: PlatformRenderer;
   private players!: PlayerRenderer;
@@ -23,14 +23,22 @@ export class GameRenderer {
       autoDensity: true,
     });
     this.app.stage.addChild(this.world);
-    this.world.addChild(this.platformsGfx, this.playersGfx, this.labels);
+    this.world.addChild(this.platformsGfx, this.fighters, this.labels);
     this.platforms = new PlatformRenderer(this.platformsGfx);
-    this.players = new PlayerRenderer(this.playersGfx, this.labels);
+    this.players = new PlayerRenderer(this.fighters, this.labels);
+    await this.players.load();
     this.platforms.draw(DEFAULT_STAGE);
   }
 
+  showHit(playerId: string, time: number): void {
+    this.players.showHit(playerId, time);
+  }
+
+  showKo(playerId: string, time: number): void {
+    this.players.showKo(playerId, time);
+  }
+
   render(players: PlayerState[], time: number): void {
-    this.playersGfx.clear();
     this.players.draw(players, time);
   }
 }

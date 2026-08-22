@@ -7,4 +7,6 @@ if (!(canvas instanceof HTMLCanvasElement)) {
 }
 
 const client = new GameClient();
-await client.start(canvas);
+void client.start(canvas).catch((error: unknown) => {
+  console.error("Failed to start Tituah", error);
+});
