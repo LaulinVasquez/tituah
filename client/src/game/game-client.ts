@@ -49,27 +49,37 @@ export class GameClient {
       }
     });
 
+    this.ui.onChooseGuest(() => this.ui.showGuest());
+    this.ui.onChooseLogin(() => this.ui.showLogin());
+    this.ui.onGuestContinue(() => void this.authenticate("guest"));
+    this.ui.onBackToLanding(() => this.ui.showAuth());
     this.ui.onSignIn(() => void this.authenticate("in"));
     this.ui.onSignUp(() => void this.authenticate("up"));
-    this.ui.onGuest(() => void this.authenticate("guest"));
     this.ui.onSignOut(() => void this.signOut());
     this.ui.onJoin(() => void this.connect());
     this.ui.onAgain(() => void this.connect());
-    this.ui.onOpenLocker(() => void this.openLocker());
-    this.ui.onCloseLocker(() => this.ui.showMenu(authService.profile));
+    this.ui.onEditAvatar(() => void this.openLocker());
+    this.ui.onSaveAvatar(() => this.ui.closeEditor());
 
     authService.start();
     authService.subscribe(() => {
       if (this.state.playing()) return;
-      if (authService.user && authService.profile) {
-        this.ui.showMenu(authService.profile);
-      } else if (!authService.user) {
+      if (!authService.user) {
         this.ui.showAuth();
+        this.ui.setPreview(null, []);
+        return;
+      }
+      if (!authService.profile) return;
+      void this.refreshPreview();
+      const pane = this.ui.currentPane;
+      if (pane === "waiting" || pane === "result" || this.ui.editing) return;
+      if (pane === "landing" || pane === "guest" || pane === "login" || pane === "menu") {
+        this.ui.showMenu(authService.profile);
       }
     });
 
     await this.renderer.init(canvas);
-    this.ui.showAuth();
+    if (!authService.user) this.ui.showAuth();
     this.loop();
   }
 
@@ -80,7 +90,7 @@ export class GameClient {
         return;
       }
       this.ui.rememberName();
-      await authService.ensureProfile(this.ui.displayName());
+      await authService.ensureProfile(authService.profile?.displayName ?? this.ui.displayName());
       this.ui.showWaiting();
       this.state.snapshot = null;
       this.state.predicted = null;
@@ -100,22 +110,23 @@ export class GameClient {
         idToken,
       });
     } catch (error) {
-      this.ui.showAuth(messageOf(error));
+      if (authService.profile) this.ui.showMenu(authService.profile, messageOf(error));
+      else this.ui.showAuth(messageOf(error));
     }
   }
 
   private async authenticate(mode: "in" | "up" | "guest"): Promise<void> {
     try {
-      const name = this.ui.displayName();
       if (mode === "guest") {
-        await authService.playAsGuest(name);
+        await authService.playAsGuest(this.ui.displayName("guest"));
       } else if (mode === "up") {
-        await authService.signUp(this.ui.email(), this.ui.password(), name);
+        await authService.signUp(this.ui.email(), this.ui.password(), this.ui.displayName("login"));
       } else {
         await authService.signIn(this.ui.email(), this.ui.password());
       }
       this.ui.rememberName();
       this.ui.showMenu(authService.profile);
+      await this.refreshPreview();
     } catch (error) {
       this.ui.showAuth(messageOf(error));
     }
@@ -124,13 +135,28 @@ export class GameClient {
   private async signOut(): Promise<void> {
     this.socket.disconnect();
     await authService.signOut();
+    this.ui.setPreview(null, []);
     this.ui.showAuth();
   }
 
-  private async openLocker(): Promise<void> {
-    const profile = authService.profile ?? (await authService.refreshProfile());
+  private async refreshPreview(): Promise<void> {
+    const profile = authService.profile;
     if (!profile) {
-      this.ui.showAuth("Sign in to open the locker.");
+      this.ui.setPreview(null, []);
+      return;
+    }
+    try {
+      const items = await itemsRepository.listEnabled();
+      this.ui.setPreview(profile, items);
+    } catch {
+      this.ui.setPreview(profile, []);
+    }
+  }
+
+  private async openLocker(): Promise<void> {
+    const profile = authService.profile ?? (await authService.refreshProfile().catch(() => null));
+    if (!profile) {
+      this.ui.showLocker(null, [], [], () => undefined, () => undefined);
       return;
     }
     const [items, inventory] = await Promise.all([

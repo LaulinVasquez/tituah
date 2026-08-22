@@ -7,6 +7,7 @@ const COLORS = [0x3ecf8e, 0x5b9dff];
 export class PlayerRenderer {
   private readonly attack: AttackRenderer;
   private readonly labels = new Map<string, Text>();
+  private readonly names = new Map<string, Text>();
 
   constructor(
     private readonly graphics: Graphics,
@@ -43,11 +44,32 @@ export class PlayerRenderer {
       if (!seen.has(id)) {
         label.destroy();
         this.labels.delete(id);
+        this.names.get(id)?.destroy();
+        this.names.delete(id);
       }
     }
   }
 
   private drawLabel(player: PlayerState): void {
+    let name = this.names.get(player.id);
+    if (!name) {
+      name = new Text({
+        text: "",
+        style: {
+          fill: 0xedf1f7,
+          fontFamily: "Avenir Next, sans-serif",
+          fontSize: 12,
+          fontWeight: "700",
+        },
+      });
+      this.labelLayer.addChild(name);
+      this.names.set(player.id, name);
+    }
+    name.text = player.name;
+    name.anchor.set(0.5, 1);
+    name.x = player.position.x;
+    name.y = player.position.y - PLAYER_HEIGHT - 28;
+
     let label = this.labels.get(player.id);
     if (!label) {
       label = new Text({

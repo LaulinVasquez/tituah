@@ -6,40 +6,98 @@ import {
   type UserInventoryItem,
   type UserProfile,
 } from "@tituah/shared";
+import { applyAvatarLook } from "./character-preview.js";
 import type { GameState } from "./game/game-state.js";
 
+type LobbyPane = "landing" | "guest" | "login" | "menu" | "waiting" | "result";
+
+const SLAP_MS = 520;
+
 export class Ui {
-  readonly overlay = document.querySelector("#overlay") as HTMLElement;
-  readonly auth = document.querySelector("#auth") as HTMLElement;
-  readonly menu = document.querySelector("#menu") as HTMLElement;
-  readonly locker = document.querySelector("#locker") as HTMLElement;
-  readonly waiting = document.querySelector("#waiting") as HTMLElement;
-  readonly result = document.querySelector("#result") as HTMLElement;
-  readonly resultTitle = document.querySelector("#result-title") as HTMLElement;
-  readonly hud = document.querySelector("#hud") as HTMLElement;
-  readonly displayNameInput = document.querySelector("#display-name") as HTMLInputElement;
-  readonly emailInput = document.querySelector("#email") as HTMLInputElement;
-  readonly passwordInput = document.querySelector("#password") as HTMLInputElement;
-  readonly signInButton = document.querySelector("#sign-in") as HTMLButtonElement;
-  readonly signUpButton = document.querySelector("#sign-up") as HTMLButtonElement;
-  readonly guestButton = document.querySelector("#guest") as HTMLButtonElement;
-  readonly joinButton = document.querySelector("#join") as HTMLButtonElement;
-  readonly againButton = document.querySelector("#again") as HTMLButtonElement;
-  readonly signOutButton = document.querySelector("#sign-out") as HTMLButtonElement;
-  readonly openLockerButton = document.querySelector("#open-locker") as HTMLButtonElement;
-  readonly closeLockerButton = document.querySelector("#close-locker") as HTMLButtonElement;
-  readonly profileLine = document.querySelector("#profile-line") as HTMLElement;
-  readonly lockerGrid = document.querySelector("#locker-grid") as HTMLElement;
-  readonly authError = document.querySelector("#auth-error") as HTMLElement;
-  readonly menuError = document.querySelector("#menu-error") as HTMLElement;
+  readonly overlay = required("#overlay");
+  readonly hud = required("#hud");
+  readonly characterColumn = required("#character-column");
+  readonly fighterPreview = required("#fighter-preview");
+  readonly previewName = required("#preview-name");
+  readonly avatarEditor = required("#avatar-editor");
+  readonly editorHint = required("#editor-hint");
+  readonly lockerGrid = required("#locker-grid");
+  readonly editButton = required("#edit-avatar", HTMLButtonElement);
+  readonly saveAvatarButton = required("#save-avatar", HTMLButtonElement);
+  readonly displayNameInput = required("#display-name", HTMLInputElement);
+  readonly loginNameInput = required("#login-name", HTMLInputElement);
+  readonly emailInput = required("#email", HTMLInputElement);
+  readonly passwordInput = required("#password", HTMLInputElement);
+  readonly chooseGuestButton = required("#choose-guest", HTMLButtonElement);
+  readonly chooseLoginButton = required("#choose-login", HTMLButtonElement);
+  readonly guestContinueButton = required("#guest-continue", HTMLButtonElement);
+  readonly signInButton = required("#sign-in", HTMLButtonElement);
+  readonly signUpButton = required("#sign-up", HTMLButtonElement);
+  readonly joinButton = required("#join", HTMLButtonElement);
+  readonly againButton = required("#again", HTMLButtonElement);
+  readonly signOutButton = required("#sign-out", HTMLButtonElement);
+  readonly profileLine = required("#profile-line");
+  readonly guestError = required("#guest-error");
+  readonly authError = required("#auth-error");
+  readonly menuError = required("#menu-error");
+  readonly resultTitle = required("#result-title");
+
+  private pane: LobbyPane = "landing";
+  private slapping = false;
+  private previewItems: InventoryItem[] = [];
+  private profile: UserProfile | null = null;
+
+  get currentPane(): LobbyPane {
+    return this.pane;
+  }
+
+  get editing(): boolean {
+    return this.characterColumn.dataset.editing === "true";
+  }
 
   constructor() {
     const stored = localStorage.getItem("tituah:name");
-    if (stored) this.displayNameInput.value = stored;
+    if (stored) {
+      this.displayNameInput.value = stored;
+      this.loginNameInput.value = stored;
+      this.setPreviewName(stored);
+    }
+    this.displayNameInput.addEventListener("input", () => this.syncPreviewName());
+    this.loginNameInput.addEventListener("input", () => this.syncPreviewName());
+    this.displayNameInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") this.guestContinueButton.click();
+    });
+    this.passwordInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") this.signInButton.click();
+    });
+    required("#lobby").addEventListener(
+      "click",
+      (event) => {
+        const button = (event.target as HTMLElement | null)?.closest("button");
+        if (!button || button.disabled) return;
+        if (button.dataset.slapReplay === "true") return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (this.slapping) return;
+        void this.slapThen(button, () => {
+          button.dataset.slapReplay = "true";
+          button.click();
+          delete button.dataset.slapReplay;
+        });
+      },
+      true,
+    );
   }
 
-  displayName(): string {
-    return this.displayNameInput.value.trim() || "Fighter";
+  displayName(source: "guest" | "login" | "any" = "any"): string {
+    if (source === "guest") return this.displayNameInput.value.trim() || "Fighter";
+    if (source === "login") return this.loginNameInput.value.trim() || "Fighter";
+    return (
+      this.displayNameInput.value.trim() ||
+      this.loginNameInput.value.trim() ||
+      this.profile?.displayName ||
+      "Fighter"
+    );
   }
 
   email(): string {
@@ -52,69 +110,94 @@ export class Ui {
 
   showAuth(error?: string): void {
     this.setOverlay(true);
-    this.auth.hidden = false;
-    this.menu.hidden = true;
-    this.locker.hidden = true;
-    this.waiting.hidden = true;
-    this.result.hidden = true;
+    this.closeEditor();
     this.hud.hidden = true;
-    this.setError(this.authError, error);
+    if (error && (this.pane === "guest" || this.pane === "login")) {
+      this.setPane(this.pane);
+      this.setPaneError(error);
+      return;
+    }
+    this.setPane("landing");
+    this.setPaneError(error);
+  }
+
+  showGuest(error?: string): void {
+    this.setOverlay(true);
+    this.hud.hidden = true;
+    this.setPane("guest");
+    this.setPaneError(error);
+    this.displayNameInput.focus();
+  }
+
+  showLogin(error?: string): void {
+    this.setOverlay(true);
+    this.hud.hidden = true;
+    this.setPane("login");
+    this.setPaneError(error);
+    this.emailInput.focus();
   }
 
   showMenu(profile?: UserProfile | null, error?: string): void {
     this.setOverlay(true);
-    this.auth.hidden = true;
-    this.menu.hidden = false;
-    this.locker.hidden = true;
-    this.waiting.hidden = true;
-    this.result.hidden = true;
+    this.closeEditor();
     this.hud.hidden = true;
+    this.setPreview(profile ?? this.profile, this.previewItems);
+    this.setPane("menu");
     if (profile) {
       this.profileLine.textContent = `${profile.displayName} · Lv ${profile.progression.level} · ${profile.stats.wins}W ${profile.stats.losses}L`;
     }
-    this.setError(this.menuError, error);
+    this.setPaneError(error);
   }
 
   showLocker(
-    profile: UserProfile,
+    profile: UserProfile | null,
     items: InventoryItem[],
     inventory: UserInventoryItem[],
     onEquip: (itemId: string) => void,
     onUnequip: (slot: ItemSlot) => void,
   ): void {
     this.setOverlay(true);
-    this.auth.hidden = true;
-    this.menu.hidden = true;
-    this.locker.hidden = false;
-    this.waiting.hidden = true;
-    this.result.hidden = true;
+    this.characterColumn.dataset.editing = "true";
+    this.avatarEditor.hidden = false;
+    this.editButton.hidden = true;
+    this.setPreview(profile, items);
     this.renderLocker(profile, items, inventory, onEquip, onUnequip);
+  }
+
+  closeEditor(): void {
+    this.characterColumn.dataset.editing = "false";
+    this.avatarEditor.hidden = true;
+    this.editButton.hidden = this.pane === "waiting" || this.pane === "result";
+    this.editorHint.hidden = true;
+    this.editorHint.textContent = "";
   }
 
   showWaiting(): void {
     this.setOverlay(true);
-    this.auth.hidden = true;
-    this.menu.hidden = true;
-    this.locker.hidden = true;
-    this.waiting.hidden = false;
-    this.result.hidden = true;
+    this.closeEditor();
     this.hud.hidden = true;
+    this.setPane("waiting");
   }
 
   showGame(): void {
     this.setOverlay(false);
+    this.closeEditor();
     this.hud.hidden = false;
   }
 
   showResult(title: string): void {
     this.setOverlay(true);
-    this.auth.hidden = true;
-    this.menu.hidden = true;
-    this.locker.hidden = true;
-    this.waiting.hidden = true;
-    this.result.hidden = false;
+    this.closeEditor();
     this.resultTitle.textContent = title;
+    this.setPane("result");
     this.hud.hidden = false;
+  }
+
+  setPreview(profile: UserProfile | null, items: InventoryItem[] = this.previewItems): void {
+    this.profile = profile;
+    this.previewItems = items;
+    applyAvatarLook(this.fighterPreview, profile?.avatar ?? null, items);
+    this.syncPreviewName();
   }
 
   updateHud(state: GameState): void {
@@ -141,6 +224,18 @@ export class Ui {
     }
   }
 
+  onChooseGuest(handler: () => void): void {
+    this.chooseGuestButton.addEventListener("click", handler);
+  }
+
+  onChooseLogin(handler: () => void): void {
+    this.chooseLoginButton.addEventListener("click", handler);
+  }
+
+  onGuestContinue(handler: () => void): void {
+    this.guestContinueButton.addEventListener("click", handler);
+  }
+
   onSignIn(handler: () => void): void {
     this.signInButton.addEventListener("click", handler);
   }
@@ -149,8 +244,9 @@ export class Ui {
     this.signUpButton.addEventListener("click", handler);
   }
 
-  onGuest(handler: () => void): void {
-    this.guestButton.addEventListener("click", handler);
+  onBackToLanding(handler: () => void): void {
+    required("#back-guest", HTMLButtonElement).addEventListener("click", handler);
+    required("#back-login", HTMLButtonElement).addEventListener("click", handler);
   }
 
   onJoin(handler: () => void): void {
@@ -165,20 +261,78 @@ export class Ui {
     this.signOutButton.addEventListener("click", handler);
   }
 
-  onOpenLocker(handler: () => void): void {
-    this.openLockerButton.addEventListener("click", handler);
+  onEditAvatar(handler: () => void): void {
+    this.editButton.addEventListener("click", handler);
   }
 
-  onCloseLocker(handler: () => void): void {
-    this.closeLockerButton.addEventListener("click", handler);
+  onSaveAvatar(handler: () => void): void {
+    this.saveAvatarButton.addEventListener("click", handler);
   }
 
   rememberName(): void {
-    localStorage.setItem("tituah:name", this.displayName());
+    const name = this.displayName();
+    if (name && name !== "Fighter") localStorage.setItem("tituah:name", name);
+    this.setPreviewName(name);
+  }
+
+  private async slapThen(target: HTMLElement, handler: () => void): Promise<void> {
+    if (this.slapping) return;
+    this.slapping = true;
+    await this.playSlap(target);
+    this.slapping = false;
+    handler();
+  }
+
+  private playSlap(target: HTMLElement): Promise<void> {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return Promise.resolve();
+
+    const body = this.fighterPreview.getBoundingClientRect();
+    const hit = target.getBoundingClientRect();
+    const originX = body.left + body.width * 0.82;
+    const originY = body.top + body.height * 0.42;
+    const destX = hit.left + hit.width / 2;
+    const destY = hit.top + hit.height / 2;
+    const dx = destX - originX;
+    const dy = destY - originY;
+    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const reach = Math.min(2.7, Math.max(1.15, Math.hypot(dx, dy) / (body.width * 0.38)));
+    this.fighterPreview.style.setProperty("--slap-angle", `${angle}deg`);
+    this.fighterPreview.style.setProperty("--slap-reach", String(reach));
+    this.fighterPreview.classList.add("is-slapping");
+    target.classList.add("is-hit");
+
+    return new Promise((resolve) => {
+      window.setTimeout(() => {
+        this.fighterPreview.classList.remove("is-slapping");
+        target.classList.remove("is-hit");
+        resolve();
+      }, SLAP_MS);
+    });
+  }
+
+  private setPane(pane: LobbyPane): void {
+    this.pane = pane;
+    for (const name of ["landing", "guest", "login", "menu", "waiting", "result"] as const) {
+      required(`#pane-${name}`).hidden = name !== pane;
+    }
+    this.guestError.hidden = true;
+    this.authError.hidden = true;
+    this.menuError.hidden = true;
+    if (!this.editing) {
+      this.editButton.hidden = pane === "waiting" || pane === "result";
+    }
+  }
+
+  private setPaneError(error?: string): void {
+    const node =
+      this.pane === "guest" ? this.guestError : this.pane === "login" ? this.authError : this.menuError;
+    this.setError(node, this.pane === "landing" ? undefined : error);
+    if (this.pane === "landing" && error) this.setError(this.authError, error);
   }
 
   private renderLocker(
-    profile: UserProfile,
+    profile: UserProfile | null,
     items: InventoryItem[],
     inventory: UserInventoryItem[],
     onEquip: (itemId: string) => void,
@@ -187,6 +341,15 @@ export class Ui {
     const owned = new Set(inventory.map((entry) => entry.itemId));
     const byId = new Map(items.map((item) => [item.id, item]));
     this.lockerGrid.replaceChildren();
+
+    if (!profile) {
+      this.editorHint.hidden = false;
+      this.editorHint.textContent = "Play as guest or log in to edit and save your avatar.";
+      return;
+    }
+
+    this.editorHint.hidden = true;
+    this.editorHint.textContent = "";
 
     for (const itemId of owned) {
       const item = byId.get(itemId);
@@ -197,7 +360,7 @@ export class Ui {
       button.className = "item-card";
       button.type = "button";
       button.dataset.equipped = equipped ? "true" : "false";
-      button.innerHTML = `<strong>${item.name}</strong><span>${item.slot} · ${item.rarity}</span><span>${item.assetId}</span>`;
+      button.innerHTML = `<strong>${item.name}</strong><span>${item.slot} · ${item.rarity}</span>`;
       button.addEventListener("click", () => {
         if (equipped) {
           const slot = AVATAR_FIELD_TO_SLOT[field];
@@ -210,11 +373,17 @@ export class Ui {
     }
 
     if (owned.size === 0) {
-      const empty = document.createElement("p");
-      empty.className = "blurb";
-      empty.textContent = "No cosmetics yet. Default items are granted on first login.";
-      this.lockerGrid.append(empty);
+      this.editorHint.hidden = false;
+      this.editorHint.textContent = "No cosmetics yet. Default items are granted on first login.";
     }
+  }
+
+  private syncPreviewName(): void {
+    this.setPreviewName(this.profile?.displayName || this.displayName());
+  }
+
+  private setPreviewName(name: string): void {
+    this.previewName.textContent = name || "Fighter";
   }
 
   private setError(node: HTMLElement, error?: string): void {
@@ -225,4 +394,14 @@ export class Ui {
   private setOverlay(visible: boolean): void {
     this.overlay.dataset.hidden = visible ? "false" : "true";
   }
+}
+
+function required(selector: string): HTMLElement;
+function required<T extends typeof HTMLElement>(selector: string, type: T): InstanceType<T>;
+function required(selector: string, type?: typeof HTMLElement): HTMLElement {
+  const node = document.querySelector(selector);
+  if (!node || (type && !(node instanceof type))) {
+    throw new Error(`Missing ${selector}`);
+  }
+  return node as HTMLElement;
 }

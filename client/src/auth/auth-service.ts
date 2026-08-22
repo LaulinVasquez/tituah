@@ -60,9 +60,13 @@ export class AuthService {
   }
 
   async ensureProfile(displayName?: string): Promise<UserProfile> {
+    const trimmed = displayName?.trim();
     this.profile = await usersRepository.ensure({
-      displayName: displayName || this.profile?.displayName,
+      displayName: trimmed || this.profile?.displayName,
     });
+    if (trimmed && this.profile.displayName !== trimmed) {
+      this.profile = (await usersRepository.updateSafe({ displayName: trimmed })) ?? this.profile;
+    }
     this.emit();
     return this.profile;
   }
