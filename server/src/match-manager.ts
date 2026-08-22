@@ -43,7 +43,7 @@ export class MatchManager {
     }
 
     const match = this.getOrCreateWaitingMatch();
-    const player = match.addPlayer(profile.uid, profile.displayName);
+    const player = match.addPlayer(profile.uid, profile.displayName, profile.avatar);
     session.matchId = match.id;
     this.sessionsByPlayer.set(player.id, session);
 

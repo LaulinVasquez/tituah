@@ -2,6 +2,7 @@ export * from "./math.js";
 export * from "./types.js";
 export * from "./protocol.js";
 export * from "./firebase/index.js";
+export * from "./sprites/ids.js";
 export * from "./data/physics.js";
 export * from "./data/attacks.js";
 export * from "./data/maps.js";

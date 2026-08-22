@@ -1,3 +1,4 @@
+import { SPRITE_ASSET_IDS } from "../sprites/ids.js";
 import type { AvatarConfiguration } from "./user.js";
 
 export type ItemSlot =
@@ -59,7 +60,7 @@ export const AVATAR_FIELD_TO_SLOT: Partial<Record<keyof AvatarConfiguration, Ite
 };
 
 export const DEFAULT_STARTER_ITEM_IDS = [
-  "basic_cap_01",
-  "sunglasses_01",
-  "sneakers_01",
+  SPRITE_ASSET_IDS.basicCap,
+  SPRITE_ASSET_IDS.sunglasses,
+  SPRITE_ASSET_IDS.sneakers,
 ] as const;
