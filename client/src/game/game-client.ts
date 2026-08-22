@@ -4,6 +4,7 @@ import {
   TICK_DT,
   type ItemSlot,
   type PlayerState,
+  type ServerMessage,
 } from "@tituah/shared";
 import { authService } from "../auth/auth-service.js";
 import { InputManager } from "../input/input-manager.js";
@@ -184,11 +185,17 @@ export class GameClient {
     await this.openLocker();
   }
 
-  private onServerMessage(message: { type: string; message?: string }): void {
+  private onServerMessage(message: ServerMessage): void {
     if (message.type === "error") {
       this.socket.disconnect();
       this.ui.showMenu(authService.profile, message.message ?? "Could not join match.");
       return;
+    }
+    if (message.type === "player_hit") {
+      this.renderer.showHit(message.targetId, this.localTime);
+    }
+    if (message.type === "player_respawn") {
+      this.renderer.showKo(message.playerId, this.localTime);
     }
     if (message.type === "welcome") {
       this.ui.showWaiting();
@@ -206,6 +213,9 @@ export class GameClient {
       if (reconciled) this.state.predicted = reconciled;
     }
     if (message.type === "match_ended") {
+      for (const player of this.state.snapshot?.players ?? []) {
+        if (player.id !== this.state.winnerId) this.renderer.showKo(player.id, this.localTime);
+      }
       const winner = this.state.winnerId
         ? this.state.names.get(this.state.winnerId) ?? "Someone"
         : "Nobody";
@@ -242,6 +252,9 @@ export class GameClient {
       this.state.predicted ??
       this.state.getPlayer(this.state.localPlayerId);
     if (!base) return;
+    if (authService.profile) {
+      base.avatar = authService.profile.avatar;
+    }
     const predicted = this.prediction.apply(clonePlayerState(base), input, this.localTime);
     this.state.predicted = predicted;
   }

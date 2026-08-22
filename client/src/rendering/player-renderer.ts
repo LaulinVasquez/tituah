@@ -1,51 +1,63 @@
 import { Container, Graphics, Text } from "pixi.js";
-import { PLAYER_HEIGHT, PLAYER_WIDTH, type PlayerState } from "@tituah/shared";
-import { AttackRenderer } from "./attack-renderer.js";
-
-const COLORS = [0x3ecf8e, 0x5b9dff];
+import { PLAYER_HEIGHT, type PlayerState } from "@tituah/shared";
+import { FighterSprite } from "./sprites/fighter-sprite.js";
 
 export class PlayerRenderer {
-  private readonly attack: AttackRenderer;
-  private readonly labels = new Map<string, Text>();
+  private readonly labels = new Map<string, { container: Container; text: Text }>();
   private readonly names = new Map<string, Text>();
+  private readonly fighters = new Map<string, FighterSprite>();
 
   constructor(
-    private readonly graphics: Graphics,
+    private readonly fighterLayer: Container,
     private readonly labelLayer: Container,
-  ) {
-    this.attack = new AttackRenderer(graphics);
+  ) {}
+
+  async load(): Promise<void> {
+    const probe = new FighterSprite("preload");
+    await probe.load();
+    probe.destroy();
+  }
+
+  showHit(playerId: string, time: number): void {
+    this.fighters.get(playerId)?.showHit(time);
+  }
+
+  showKo(playerId: string, time: number): void {
+    this.fighters.get(playerId)?.showKo(time);
   }
 
   draw(players: PlayerState[], time: number): void {
     const seen = new Set<string>();
+    const visibleLabels = new Set<string>();
     for (const player of players) {
-      if (player.lives <= 0) continue;
       seen.add(player.id);
-      const color = COLORS[player.spawnIndex % COLORS.length] ?? COLORS[0];
-      const x = player.position.x - PLAYER_WIDTH / 2;
-      const y = player.position.y - PLAYER_HEIGHT;
-      const flash = player.invulnerableUntil > time && Math.floor(time * 12) % 2 === 0;
+      let fighter = this.fighters.get(player.id);
+      if (!fighter) {
+        fighter = new FighterSprite(player.id);
+        void fighter.load();
+        this.fighterLayer.addChild(fighter);
+        this.fighters.set(player.id, fighter);
+      }
+      fighter.update(player, time);
 
-      this.graphics.roundRect(x, y, PLAYER_WIDTH, PLAYER_HEIGHT, 8).fill({
-        color,
-        alpha: flash ? 0.35 : 1,
-      });
-      this.graphics.circle(
-        player.position.x + 8 * player.facing,
-        player.position.y - PLAYER_HEIGHT + 18,
-        4,
-      ).fill(0x0b1020);
-
-      this.attack.draw(player, time, player.spawnIndex);
-      this.drawLabel(player);
+      if (player.lives > 0) {
+        visibleLabels.add(player.id);
+        this.drawLabel(player);
+      }
     }
 
     for (const [id, label] of this.labels) {
-      if (!seen.has(id)) {
-        label.destroy();
+      if (!visibleLabels.has(id)) {
+        label.container.destroy({ children: true });
         this.labels.delete(id);
         this.names.get(id)?.destroy();
         this.names.delete(id);
+      }
+    }
+    for (const [id, fighter] of this.fighters) {
+      if (!seen.has(id)) {
+        fighter.destroy();
+        this.fighters.delete(id);
       }
     }
   }
@@ -68,25 +80,32 @@ export class PlayerRenderer {
     name.text = player.name;
     name.anchor.set(0.5, 1);
     name.x = player.position.x;
-    name.y = player.position.y - PLAYER_HEIGHT - 28;
+    name.y = player.position.y - PLAYER_HEIGHT - 58;
 
-    let label = this.labels.get(player.id);
-    if (!label) {
-      label = new Text({
+    let badge = this.labels.get(player.id);
+    if (!badge) {
+      const container = new Container();
+      const background = new Graphics()
+        .roundRect(-21, -12, 42, 24, 9)
+        .fill({ color: player.spawnIndex % 2 === 0 ? 0xc84f22 : 0x216bc4, alpha: 0.94 })
+        .stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
+      const text = new Text({
         text: "",
         style: {
-          fill: 0xedf1f7,
+          fill: 0xffffff,
           fontFamily: "Avenir Next, sans-serif",
-          fontSize: 14,
-          fontWeight: "700",
+          fontSize: 12,
+          fontWeight: "800",
         },
       });
-      this.labelLayer.addChild(label);
-      this.labels.set(player.id, label);
+      text.anchor.set(0.5);
+      container.addChild(background, text);
+      this.labelLayer.addChild(container);
+      badge = { container, text };
+      this.labels.set(player.id, badge);
     }
-    label.text = `${Math.round(player.damagePercent)}%`;
-    label.anchor.set(0.5, 1);
-    label.x = player.position.x;
-    label.y = player.position.y - PLAYER_HEIGHT - 10;
+    badge.text.text = `${Math.round(player.damagePercent)}%`;
+    badge.container.x = player.position.x + 38;
+    badge.container.y = player.position.y - PLAYER_HEIGHT - 40;
   }
 }

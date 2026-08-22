@@ -5,6 +5,7 @@ import {
   GROUND_ACCEL,
   GROUND_FRICTION,
   JUMP_VELOCITY,
+  MAX_JUMPS,
   MAX_FALL_SPEED,
   MOVE_SPEED,
 } from "../data/physics.js";
@@ -35,9 +36,13 @@ export function applyMovement(
   }
 
   const jumpPressed = input.jump && !previousInput.jump;
-  if (jumpPressed && player.grounded) {
+  if (player.grounded) {
+    player.jumpsRemaining = MAX_JUMPS;
+  }
+  if (jumpPressed && player.jumpsRemaining > 0) {
     player.velocity.y = JUMP_VELOCITY;
     player.grounded = false;
+    player.jumpsRemaining -= 1;
   }
 
   player.velocity.y = Math.min(player.velocity.y + GRAVITY * dt, MAX_FALL_SPEED);
@@ -47,4 +52,7 @@ export function applyMovement(
 
   player.position.y += player.velocity.y * dt;
   resolveVerticalCollisions(player, platforms, previousBottom);
+  if (player.grounded) {
+    player.jumpsRemaining = MAX_JUMPS;
+  }
 }
