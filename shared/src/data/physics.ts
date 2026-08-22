@@ -18,6 +18,7 @@ export const GROUND_FRICTION = 3200;
 export const AIR_FRICTION = 400;
 export const GRAVITY = 2200;
 export const JUMP_VELOCITY = -780;
+export const MAX_JUMPS = 2;
 export const MAX_FALL_SPEED = 1500;
 
 export const KNOCKBACK_SCALING = 0.014;
