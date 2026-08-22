@@ -7,4 +7,4 @@ if (!(canvas instanceof HTMLCanvasElement)) {
 }
 
 const client = new GameClient();
-await client.start(canvas);
+void client.start(canvas);
