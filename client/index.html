@@ -24,14 +24,33 @@
         </div>
       </div>
       <div id="overlay">
-        <section id="menu" class="panel">
+        <section id="auth" class="panel">
+          <p class="eyebrow">Account</p>
+          <h1>Tituah</h1>
+          <p class="blurb">Sign in to save stats, cosmetics, and match results.</p>
+          <label>
+            Display name
+            <input id="display-name" maxlength="24" placeholder="Fighter" autocomplete="nickname" />
+          </label>
+          <label>
+            Email
+            <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
+          </label>
+          <label>
+            Password
+            <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+          </label>
+          <div class="actions">
+            <button id="sign-in" type="button">Sign in</button>
+            <button id="sign-up" class="secondary" type="button">Create account</button>
+          </div>
+          <button id="guest" class="ghost" type="button">Play as guest</button>
+          <p id="auth-error" class="error" hidden></p>
+        </section>
+        <section id="menu" class="panel" hidden>
           <p class="eyebrow">Platform fighter</p>
           <h1>Tituah</h1>
-          <p class="blurb">Run, jump, charge a slap, and knock the other player off the stage.</p>
-          <label>
-            Name
-            <input id="name" maxlength="16" placeholder="Fighter" autocomplete="off" />
-          </label>
+          <p id="profile-line" class="blurb">Welcome back.</p>
           <p class="stage-heading">Select stage</p>
           <div class="stage-select" role="group" aria-label="Select stage">
             <button type="button" data-stage="barnyard" data-selected="true">
@@ -45,12 +64,24 @@
             </button>
           </div>
           <button id="join" type="button">Find match</button>
+          <div class="actions">
+            <button id="open-locker" class="secondary" type="button">Locker</button>
+            <button id="sign-out" class="ghost" type="button">Sign out</button>
+          </div>
           <p class="hint">A / D move · Space twice to double jump · S / ↓ drops through upper platforms · Hold Z to slap</p>
+          <p id="menu-error" class="error" hidden></p>
+        </section>
+        <section id="locker" class="panel wide" hidden>
+          <p class="eyebrow">Avatar</p>
+          <h2>Locker</h2>
+          <p class="blurb">Equip items you own. Cosmetics use the same sprite IDs as the fighter sheet.</p>
+          <div id="locker-grid" class="locker-grid"></div>
+          <button id="close-locker" class="secondary" type="button">Back</button>
         </section>
         <section id="waiting" class="panel" hidden>
           <p class="eyebrow">Matchmaking</p>
           <h2>Waiting for opponent</h2>
-          <p class="blurb">Open a second browser window and join the same server.</p>
+          <p class="blurb">Open a second window with another account, or a guest in a private window.</p>
         </section>
         <section id="result" class="panel" hidden>
           <p class="eyebrow">Match over</p>

@@ -1,5 +1,6 @@
 import { Assets, ColorMatrixFilter, Container, Rectangle, Sprite, Texture } from "pixi.js";
 import type { PlayerState } from "@tituah/shared";
+import { appearanceFromAvatar, colorHue, type AccessorySprite } from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
@@ -39,6 +40,9 @@ function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
 
 export class FighterSprite extends Container {
   private readonly sprite = new Sprite();
+  private readonly accessoryLayer = new Container();
+  private readonly accessorySprites = new Map<string, Sprite>();
+  private sheet!: Texture;
   private textures!: Record<FighterAnimation, Texture[]>;
   private animation: FighterAnimation = "idle";
   private animationStartedAt = 0;
@@ -49,16 +53,17 @@ export class FighterSprite extends Container {
   private hitStrength = 1;
   private koUntil = 0;
   private hiddenUntil = 0;
-  private colorVariant = -1;
+  private colorKey = "";
 
   constructor(readonly playerId: string) {
     super();
-    this.addChild(this.sprite);
+    this.addChild(this.sprite, this.accessoryLayer);
     this.sprite.anchor.set(0.5, 1);
   }
 
   async load(): Promise<void> {
     this.textures = await loadTextures();
+    this.sheet = await Assets.load<Texture>(FIGHTER_SHEET_URL);
     this.sprite.texture = this.textures.idle[0];
   }
 
@@ -96,7 +101,9 @@ export class FighterSprite extends Container {
 
     this.sprite.scale.set(scale * player.facing, scale);
     this.sprite.position.set((frame.offsetX ?? 0) * scale * player.facing, frame.offsetY ?? 0);
-    this.setColorVariant(player.spawnIndex);
+    const appearance = appearanceFromAvatar(player.avatar, player.spawnIndex);
+    this.setColorVariant(appearance.color);
+    this.syncAccessories(appearance.accessories, player.facing);
     this.applyHitMotion(time);
     this.zIndex = player.position.y
       + (player.attackState.type === "active" ? 1_000 : 0)
@@ -139,18 +146,50 @@ export class FighterSprite extends Container {
     this.sprite.texture = this.textures[this.animation][this.frameIndex(time)];
   }
 
-  private setColorVariant(spawnIndex: number): void {
-    const variant = spawnIndex % 2;
-    if (variant === this.colorVariant) return;
-    this.colorVariant = variant;
-    if (variant === 0) {
+  private setColorVariant(color: ReturnType<typeof appearanceFromAvatar>["color"]): void {
+    if (color === this.colorKey) return;
+    this.colorKey = color;
+    const hue = colorHue(color);
+    if (hue == null) {
       this.sprite.filters = [];
       return;
     }
-    const blue = new ColorMatrixFilter();
-    blue.hue(190, false);
-    blue.saturate(0.35, true);
-    this.sprite.filters = [blue];
+    const filter = new ColorMatrixFilter();
+    filter.hue(hue, false);
+    filter.saturate(0.28, true);
+    this.sprite.filters = [filter];
+  }
+
+  private syncAccessories(accessories: AccessorySprite[], facing: 1 | -1): void {
+    if (!this.sheet) return;
+    const seen = new Set<string>();
+    for (const accessory of accessories) {
+      seen.add(accessory.id);
+      let sprite = this.accessorySprites.get(accessory.id);
+      if (!sprite) {
+        sprite = new Sprite(
+          new Texture({
+            source: this.sheet.source,
+            frame: new Rectangle(
+              accessory.frame.x,
+              accessory.frame.y,
+              accessory.frame.width,
+              accessory.frame.height,
+            ),
+          }),
+        );
+        sprite.anchor.set(0.5, 1);
+        this.accessoryLayer.addChild(sprite);
+        this.accessorySprites.set(accessory.id, sprite);
+      }
+      const accessoryScale = 42 / accessory.frame.height;
+      sprite.scale.set(accessoryScale * facing, accessoryScale);
+      sprite.position.set(accessory.anchorX * facing, accessory.anchorY);
+      sprite.visible = true;
+    }
+    for (const [id, sprite] of this.accessorySprites) {
+      if (!seen.has(id)) sprite.visible = false;
+    }
   }
 
   private applyHitMotion(time: number): void {

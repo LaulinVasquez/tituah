@@ -11,16 +11,20 @@ export class InputManager {
   private aimAngle = 0;
   private previousAttackHeld = false;
 
+  private pointerDown = false;
+
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("blur", this.clear);
+    canvas.addEventListener("pointerdown", this.onPointerDown);
+    window.addEventListener("pointerup", this.onPointerUp);
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     canvas.addEventListener("pointermove", this.onPointerMove);
   }
 
   sample(): SampledInput {
-    const attackHeld = this.keys.has("z");
+    const attackHeld = this.pointerDown || this.keys.has("z") || this.keys.has("j") || this.keys.has("k");
     let attackEdge: SampledInput["attackEdge"] = null;
     if (attackHeld && !this.previousAttackHeld) attackEdge = "start";
     if (!attackHeld && this.previousAttackHeld) attackEdge = "release";
@@ -47,7 +51,7 @@ export class InputManager {
       right: this.keys.has("d") || this.keys.has("arrowright"),
       down: this.keys.has("s") || this.keys.has("arrowdown"),
       jump: this.keys.has(" ") || this.keys.has("w") || this.keys.has("arrowup"),
-      attackHeld: this.keys.has("z"),
+      attackHeld: this.pointerDown || this.keys.has("z") || this.keys.has("j") || this.keys.has("k"),
       aimAngle: this.aimAngle,
     };
   }
@@ -56,8 +60,20 @@ export class InputManager {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.clear);
+    this.canvas.removeEventListener("pointerdown", this.onPointerDown);
+    window.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
   }
+
+  private readonly onPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) return;
+    this.pointerDown = true;
+    this.updateAim(event);
+  };
+
+  private readonly onPointerUp = (): void => {
+    this.pointerDown = false;
+  };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     this.keys.add(event.key.toLowerCase());
@@ -74,6 +90,7 @@ export class InputManager {
 
   private readonly clear = (): void => {
     this.keys.clear();
+    this.pointerDown = false;
     this.previousAttackHeld = false;
   };
 

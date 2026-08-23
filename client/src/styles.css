@@ -111,6 +111,12 @@ body,
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
 }
 
+.panel.wide {
+  width: min(640px, calc(100vw - 32px));
+  max-height: min(80vh, 720px);
+  overflow: auto;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: var(--accent);
@@ -203,4 +209,60 @@ button {
 .hint {
   margin: 16px 0 0;
   font-size: 13px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+button.secondary {
+  background: #243049;
+  color: var(--text);
+}
+
+button.ghost {
+  margin-top: 12px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.error {
+  margin: 12px 0 0;
+  color: #ff8b7a;
+  font-size: 13px;
+}
+
+.locker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin: 16px 0 20px;
+}
+
+.item-card {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #0d1320;
+  text-align: left;
+  color: var(--text);
+}
+
+.item-card strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.item-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.item-card[data-equipped="true"] {
+  border-color: var(--accent);
 }

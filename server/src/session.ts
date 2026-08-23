@@ -4,6 +4,7 @@ export class Session {
   readonly id: string;
   playerId: string | null = null;
   matchId: string | null = null;
+  uid: string | null = null;
   name = "Fighter";
   lastSeenAt = Date.now();
 

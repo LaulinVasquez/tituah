@@ -2,13 +2,18 @@ import {
   clonePlayerState,
   DEFAULT_STAGE,
   TICK_DT,
+  type ItemSlot,
   type PlayerState,
+  type ServerMessage,
 } from "@tituah/shared";
+import { authService } from "../auth/auth-service.js";
 import { InputManager } from "../input/input-manager.js";
 import { GameSocket } from "../network/game-socket.js";
 import { MessageHandler } from "../network/message-handler.js";
 import { InterpolationManager } from "../prediction/interpolation-manager.js";
 import { PredictionManager } from "../prediction/prediction-manager.js";
+import { inventoryRepository } from "../repositories/inventory.repository.js";
+import { itemsRepository } from "../repositories/items.repository.js";
 import { GameRenderer } from "../rendering/game-renderer.js";
 import { Ui } from "../ui.js";
 import { GameState } from "./game-state.js";
@@ -37,42 +42,141 @@ export class GameClient {
     );
     this.socket.onMessage((message) => this.messages.handle(message));
     this.socket.onOpen(() => {
-      this.socket.send({ type: "join", name: this.ui.name(), stageId: this.ui.stageId() });
+      void this.sendJoin();
     });
     this.socket.onClose(() => {
       if (this.state.snapshot?.status === "playing") {
-        this.ui.showMenu();
+        this.ui.showMenu(authService.profile);
       }
     });
-    this.ui.onJoin(() => this.connect());
-    this.ui.onAgain(() => this.connect());
+
+    this.ui.onSignIn(() => void this.authenticate("in"));
+    this.ui.onSignUp(() => void this.authenticate("up"));
+    this.ui.onGuest(() => void this.authenticate("guest"));
+    this.ui.onSignOut(() => void this.signOut());
+    this.ui.onJoin(() => void this.connect());
+    this.ui.onAgain(() => void this.connect());
+    this.ui.onOpenLocker(() => void this.openLocker());
+    this.ui.onCloseLocker(() => this.ui.showMenu(authService.profile));
+
+    authService.start();
+    authService.subscribe(() => {
+      if (this.state.playing()) return;
+      if (authService.user && authService.profile) {
+        this.ui.showMenu(authService.profile);
+      } else if (!authService.user) {
+        this.ui.showAuth();
+      }
+    });
+
     await this.renderer.init(canvas);
-    this.ui.showMenu();
+    this.ui.showAuth();
     this.loop();
   }
 
-  connect(): void {
-    this.ui.rememberName();
-    this.ui.showWaiting();
-    this.state.snapshot = null;
-    this.state.predicted = null;
-    this.state.winnerId = null;
-    this.socket.connect();
+  async connect(): Promise<void> {
+    try {
+      if (!authService.user) {
+        this.ui.showAuth("Sign in first.");
+        return;
+      }
+      this.ui.rememberName();
+      await authService.ensureProfile(this.ui.displayName());
+      this.ui.showWaiting();
+      this.state.snapshot = null;
+      this.state.predicted = null;
+      this.state.winnerId = null;
+      this.socket.connect();
+    } catch (error) {
+      this.ui.showMenu(authService.profile, messageOf(error));
+    }
   }
 
-  private onServerMessage(message: import("@tituah/shared").ServerMessage): void {
-    const type = message.type;
+  private async sendJoin(): Promise<void> {
+    try {
+      const idToken = await authService.idToken();
+      this.socket.send({
+        type: "join",
+        name: authService.profile?.displayName ?? this.ui.displayName(),
+        idToken,
+        stageId: this.ui.stageId(),
+      });
+    } catch (error) {
+      this.ui.showAuth(messageOf(error));
+    }
+  }
+
+  private async authenticate(mode: "in" | "up" | "guest"): Promise<void> {
+    try {
+      const name = this.ui.displayName();
+      if (mode === "guest") {
+        await authService.playAsGuest(name);
+      } else if (mode === "up") {
+        await authService.signUp(this.ui.email(), this.ui.password(), name);
+      } else {
+        await authService.signIn(this.ui.email(), this.ui.password());
+      }
+      this.ui.rememberName();
+      this.ui.showMenu(authService.profile);
+    } catch (error) {
+      this.ui.showAuth(messageOf(error));
+    }
+  }
+
+  private async signOut(): Promise<void> {
+    this.socket.disconnect();
+    await authService.signOut();
+    this.ui.showAuth();
+  }
+
+  private async openLocker(): Promise<void> {
+    const profile = authService.profile ?? (await authService.refreshProfile());
+    if (!profile) {
+      this.ui.showAuth("Sign in to open the locker.");
+      return;
+    }
+    const [items, inventory] = await Promise.all([
+      itemsRepository.listEnabled(),
+      inventoryRepository.list(profile.uid),
+    ]);
+    this.ui.showLocker(
+      profile,
+      items,
+      inventory,
+      (itemId) => void this.equip(itemId),
+      (slot) => void this.unequip(slot),
+    );
+  }
+
+  private async equip(itemId: string): Promise<void> {
+    await inventoryRepository.equip(itemId);
+    await authService.refreshProfile();
+    await this.openLocker();
+  }
+
+  private async unequip(slot: ItemSlot): Promise<void> {
+    await inventoryRepository.unequip(slot);
+    await authService.refreshProfile();
+    await this.openLocker();
+  }
+
+  private onServerMessage(message: ServerMessage): void {
+    if (message.type === "error") {
+      this.socket.disconnect();
+      this.ui.showMenu(authService.profile, message.message ?? "Could not join match.");
+      return;
+    }
     if (message.type === "player_hit") {
       this.renderer.showHit(message, this.localTime);
     }
     if (message.type === "player_respawn") {
       this.renderer.showVoidDeath(message.playerId, this.localTime);
     }
-    if (type === "welcome") {
+    if (message.type === "welcome") {
       this.ui.showWaiting();
     }
-    if (type === "match_started") {
-      void this.renderer.setStage(message.snapshot.stageId);
+    if (message.type === "match_started") {
+      this.renderer.setStage(message.snapshot.stageId);
       this.localTime = this.state.snapshot?.time ?? 0;
       this.accumulator = 0;
       if (this.state.localPlayerId && this.state.snapshot) {
@@ -80,11 +184,11 @@ export class GameClient {
       }
       this.ui.showGame();
     }
-    if (type === "snapshot" && this.state.predicted) {
+    if (message.type === "snapshot" && this.state.predicted) {
       const reconciled = this.prediction.current();
       if (reconciled) this.state.predicted = reconciled;
     }
-    if (type === "match_ended") {
+    if (message.type === "match_ended") {
       for (const player of this.state.snapshot?.players ?? []) {
         if (player.id !== this.state.winnerId) {
           this.renderer.showVoidDeath(player.id, this.localTime);
@@ -94,6 +198,7 @@ export class GameClient {
         ? this.state.names.get(this.state.winnerId) ?? "Someone"
         : "Nobody";
       this.ui.showResult(`${winner} wins`);
+      void authService.refreshProfile();
     }
   }
 
@@ -125,6 +230,9 @@ export class GameClient {
       this.state.predicted ??
       this.state.getPlayer(this.state.localPlayerId);
     if (!base) return;
+    if (authService.profile) {
+      base.avatar = authService.profile.avatar;
+    }
     const predicted = this.prediction.apply(clonePlayerState(base), input, this.localTime);
     this.state.predicted = predicted;
   }
@@ -146,4 +254,8 @@ export class GameClient {
     this.renderer.render(players, this.localTime || time);
     this.ui.updateHud(this.state);
   }
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : "Something went wrong";
 }

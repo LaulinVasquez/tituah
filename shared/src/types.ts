@@ -1,3 +1,4 @@
+import { emptyAvatar, type AvatarConfiguration } from "./firebase/user.js";
 import type { Vec2 } from "./math.js";
 
 export type Facing = 1 | -1;
@@ -79,6 +80,7 @@ export interface PlayerState {
   lastInputSeq: number;
   spawnIndex: number;
   invulnerableUntil: number;
+  avatar: AvatarConfiguration;
 }
 
 export interface Projectile {
@@ -185,6 +187,7 @@ export function clonePlayerState(player: PlayerState): PlayerState {
     position: { ...player.position },
     velocity: { ...player.velocity },
     attackState: cloneAttackState(player.attackState),
+    avatar: { ...(player.avatar ?? emptyAvatar()) },
   };
 }
 
