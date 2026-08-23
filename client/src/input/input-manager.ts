@@ -31,6 +31,7 @@ export class InputManager {
         sequence: ++this.sequence,
         left: this.keys.has("a") || this.keys.has("arrowleft"),
         right: this.keys.has("d") || this.keys.has("arrowright"),
+        down: this.keys.has("s") || this.keys.has("arrowdown"),
         jump: this.keys.has(" ") || this.keys.has("w") || this.keys.has("arrowup"),
         attackHeld,
         aimAngle: this.aimAngle,
@@ -44,6 +45,7 @@ export class InputManager {
       ...emptyInput(this.sequence),
       left: this.keys.has("a") || this.keys.has("arrowleft"),
       right: this.keys.has("d") || this.keys.has("arrowright"),
+      down: this.keys.has("s") || this.keys.has("arrowdown"),
       jump: this.keys.has(" ") || this.keys.has("w") || this.keys.has("arrowup"),
       attackHeld: this.keys.has("z"),
       aimAngle: this.aimAngle,
@@ -59,7 +61,7 @@ export class InputManager {
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     this.keys.add(event.key.toLowerCase());
-    if (event.key === " ") event.preventDefault();
+    if (event.key === " " || event.key.startsWith("Arrow")) event.preventDefault();
   };
 
   private readonly onKeyUp = (event: KeyboardEvent): void => {

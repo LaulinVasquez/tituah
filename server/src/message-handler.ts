@@ -12,7 +12,7 @@ export class MessageHandler {
 
     switch (message.type) {
       case "join":
-        this.matches.join(session, message.name);
+        this.matches.join(session, message.name, message.stageId);
         break;
       case "input":
         this.matches.handleInput(session, message.input);

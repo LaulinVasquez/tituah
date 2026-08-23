@@ -1,4 +1,5 @@
 import type { GameState } from "./game/game-state.js";
+import { isStageId, type StageId } from "@tituah/shared";
 
 export class Ui {
   readonly overlay = document.querySelector("#overlay") as HTMLElement;
@@ -10,14 +11,30 @@ export class Ui {
   readonly nameInput = document.querySelector("#name") as HTMLInputElement;
   readonly joinButton = document.querySelector("#join") as HTMLButtonElement;
   readonly againButton = document.querySelector("#again") as HTMLButtonElement;
+  readonly stageButtons = document.querySelectorAll<HTMLButtonElement>("[data-stage]");
+  private selectedStage: StageId = "barnyard";
 
   constructor() {
     const stored = localStorage.getItem("tituah:name");
     if (stored) this.nameInput.value = stored;
+    for (const button of this.stageButtons) {
+      button.addEventListener("click", () => {
+        const id = button.dataset.stage;
+        if (!isStageId(id)) return;
+        this.selectedStage = id;
+        for (const entry of this.stageButtons) {
+          entry.dataset.selected = String(entry === button);
+        }
+      });
+    }
   }
 
   name(): string {
     return this.nameInput.value.trim() || "Fighter";
+  }
+
+  stageId(): StageId {
+    return this.selectedStage;
   }
 
   showMenu(): void {

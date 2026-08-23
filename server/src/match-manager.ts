@@ -1,4 +1,4 @@
-import { TICK_DT, TICK_RATE, type PlayerInput, type ServerMessage } from "@tituah/shared";
+import { getStage, isStageId, TICK_DT, TICK_RATE, type PlayerInput, type ServerMessage } from "@tituah/shared";
 import { Match } from "./match.js";
 import type { Session } from "./session.js";
 
@@ -24,9 +24,9 @@ export class MatchManager {
     this.timer = null;
   }
 
-  join(session: Session, name: string): Match {
+  join(session: Session, name: string, requestedStageId: string): Match {
     session.name = name.trim() || "Fighter";
-    const match = this.getOrCreateWaitingMatch();
+    const match = this.getOrCreateWaitingMatch(requestedStageId);
     const player = match.addPlayer(session.id, session.name);
     session.playerId = player.id;
     session.matchId = match.id;
@@ -98,13 +98,14 @@ export class MatchManager {
     return this.matches.get(session.matchId) ?? null;
   }
 
-  private getOrCreateWaitingMatch(): Match {
+  private getOrCreateWaitingMatch(requestedStageId: string): Match {
     if (this.waiting && this.waiting.status === "waiting") {
       return this.waiting;
     }
+    const stage = getStage(isStageId(requestedStageId) ? requestedStageId : "barnyard");
     const match = new Match(crypto.randomUUID(), (playerId, message) => {
       this.send(match, playerId, message);
-    });
+    }, stage);
     this.matches.set(match.id, match);
     this.waiting = match;
     return match;

@@ -120,12 +120,14 @@ export interface PlayerInput {
   sequence: number;
   left: boolean;
   right: boolean;
+  down: boolean;
   jump: boolean;
   attackHeld: boolean;
   aimAngle: number;
 }
 
 export interface MatchSnapshot {
+  stageId: string;
   tick: number;
   time: number;
   status: MatchStatus;
@@ -166,6 +168,7 @@ export function emptyInput(sequence = 0): PlayerInput {
     sequence,
     left: false,
     right: false,
+    down: false,
     jump: false,
     attackHeld: false,
     aimAngle: 0,

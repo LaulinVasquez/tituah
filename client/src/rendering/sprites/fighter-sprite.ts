@@ -12,6 +12,7 @@ const RUN_THRESHOLD = 24;
 const LAND_DURATION = 0.2;
 const HIT_DURATION = 0.38;
 const KO_DURATION = 0.65;
+const RESPAWN_HIDE_DURATION = 0.52;
 
 let texturePromise: Promise<Record<FighterAnimation, Texture[]>> | null = null;
 
@@ -43,7 +44,11 @@ export class FighterSprite extends Container {
   private animationStartedAt = 0;
   private wasGrounded = true;
   private hitUntil = 0;
+  private hitStartedAt = 0;
+  private hitDirection = 1;
+  private hitStrength = 1;
   private koUntil = 0;
+  private hiddenUntil = 0;
   private colorVariant = -1;
 
   constructor(readonly playerId: string) {
@@ -57,14 +62,21 @@ export class FighterSprite extends Container {
     this.sprite.texture = this.textures.idle[0];
   }
 
-  showHit(time: number): void {
+  showHit(time: number, direction: number, strength: number): void {
+    this.hitStartedAt = time;
     this.hitUntil = Math.max(this.hitUntil, time + HIT_DURATION);
+    this.hitDirection = direction || 1;
+    this.hitStrength = Math.min(1.8, Math.max(0.8, strength));
     this.setAnimation("hit", time, true);
   }
 
   showKo(time: number): void {
     this.koUntil = Math.max(this.koUntil, time + KO_DURATION);
     this.setAnimation("ko", time, true);
+  }
+
+  showVoidDeath(time: number): void {
+    this.hiddenUntil = Math.max(this.hiddenUntil, time + RESPAWN_HIDE_DURATION);
   }
 
   update(player: PlayerState, time: number): void {
@@ -85,8 +97,12 @@ export class FighterSprite extends Container {
     this.sprite.scale.set(scale * player.facing, scale);
     this.sprite.position.set((frame.offsetX ?? 0) * scale * player.facing, frame.offsetY ?? 0);
     this.setColorVariant(player.spawnIndex);
+    this.applyHitMotion(time);
+    this.zIndex = player.position.y
+      + (player.attackState.type === "active" ? 1_000 : 0)
+      + (time < this.hitUntil ? 1_100 : 0);
     this.alpha = player.invulnerableUntil > time && Math.floor(time * 12) % 2 === 0 ? 0.35 : 1;
-    this.visible = player.lives > 0 || time < this.koUntil;
+    this.visible = time >= this.hiddenUntil && (player.lives > 0 || time < this.koUntil);
     this.wasGrounded = player.grounded;
   }
 
@@ -135,5 +151,18 @@ export class FighterSprite extends Container {
     blue.hue(190, false);
     blue.saturate(0.35, true);
     this.sprite.filters = [blue];
+  }
+
+  private applyHitMotion(time: number): void {
+    if (time >= this.hitUntil) {
+      this.rotation = 0;
+      return;
+    }
+    const progress = Math.min(1, Math.max(0, (time - this.hitStartedAt) / HIT_DURATION));
+    const decay = 1 - progress;
+    const shake = Math.sin(progress * Math.PI * 7) * 7 * decay * this.hitStrength;
+    this.x += shake * this.hitDirection;
+    this.y -= Math.sin(progress * Math.PI) * 8 * this.hitStrength;
+    this.rotation = -this.hitDirection * 0.08 * decay * this.hitStrength;
   }
 }

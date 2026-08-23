@@ -37,7 +37,7 @@ export class GameClient {
     );
     this.socket.onMessage((message) => this.messages.handle(message));
     this.socket.onOpen(() => {
-      this.socket.send({ type: "join", name: this.ui.name() });
+      this.socket.send({ type: "join", name: this.ui.name(), stageId: this.ui.stageId() });
     });
     this.socket.onClose(() => {
       if (this.state.snapshot?.status === "playing") {
@@ -63,15 +63,16 @@ export class GameClient {
   private onServerMessage(message: import("@tituah/shared").ServerMessage): void {
     const type = message.type;
     if (message.type === "player_hit") {
-      this.renderer.showHit(message.targetId, this.localTime);
+      this.renderer.showHit(message, this.localTime);
     }
     if (message.type === "player_respawn") {
-      this.renderer.showKo(message.playerId, this.localTime);
+      this.renderer.showVoidDeath(message.playerId, this.localTime);
     }
     if (type === "welcome") {
       this.ui.showWaiting();
     }
     if (type === "match_started") {
+      void this.renderer.setStage(message.snapshot.stageId);
       this.localTime = this.state.snapshot?.time ?? 0;
       this.accumulator = 0;
       if (this.state.localPlayerId && this.state.snapshot) {
@@ -85,7 +86,9 @@ export class GameClient {
     }
     if (type === "match_ended") {
       for (const player of this.state.snapshot?.players ?? []) {
-        if (player.id !== this.state.winnerId) this.renderer.showKo(player.id, this.localTime);
+        if (player.id !== this.state.winnerId) {
+          this.renderer.showVoidDeath(player.id, this.localTime);
+        }
       }
       const winner = this.state.winnerId
         ? this.state.names.get(this.state.winnerId) ?? "Someone"

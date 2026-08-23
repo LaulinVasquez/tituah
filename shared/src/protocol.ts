@@ -20,6 +20,7 @@ export type ServerMessage =
 export interface JoinMessage {
   type: "join";
   name: string;
+  stageId: string;
 }
 
 export interface ClientInputMessage {

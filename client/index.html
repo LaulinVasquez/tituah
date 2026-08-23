@@ -7,18 +7,20 @@
   </head>
   <body>
     <div id="app">
-      <canvas id="game"></canvas>
-      <div id="hud" hidden>
-        <div class="fighter" data-slot="0">
-          <span class="name">P1</span>
-          <span class="lives"></span>
-          <span class="percent">0%</span>
-        </div>
-        <div class="title">TITUAH</div>
-        <div class="fighter" data-slot="1">
-          <span class="name">P2</span>
-          <span class="lives"></span>
-          <span class="percent">0%</span>
+      <div id="viewport">
+        <canvas id="game"></canvas>
+        <div id="hud" hidden>
+          <div class="fighter" data-slot="0">
+            <span class="name">P1</span>
+            <span class="lives"></span>
+            <span class="percent">0%</span>
+          </div>
+          <div class="title">TITUAH</div>
+          <div class="fighter" data-slot="1">
+            <span class="name">P2</span>
+            <span class="lives"></span>
+            <span class="percent">0%</span>
+          </div>
         </div>
       </div>
       <div id="overlay">
@@ -30,8 +32,20 @@
             Name
             <input id="name" maxlength="16" placeholder="Fighter" autocomplete="off" />
           </label>
+          <p class="stage-heading">Select stage</p>
+          <div class="stage-select" role="group" aria-label="Select stage">
+            <button type="button" data-stage="barnyard" data-selected="true">
+              <strong>Barnyard Brawl</strong><span>Sunset farm</span>
+            </button>
+            <button type="button" data-stage="fridge" data-selected="false">
+              <strong>Fridge Frenzy</strong><span>Cold storage</span>
+            </button>
+            <button type="button" data-stage="meadow" data-selected="false">
+              <strong>Sky-High Meadow</strong><span>Floating islands</span>
+            </button>
+          </div>
           <button id="join" type="button">Find match</button>
-          <p class="hint">A / D move · Space twice to double jump · Hold Z to charge slap</p>
+          <p class="hint">A / D move · Space twice to double jump · S / ↓ drops through upper platforms · Hold Z to slap</p>
         </section>
         <section id="waiting" class="panel" hidden>
           <p class="eyebrow">Matchmaking</p>
