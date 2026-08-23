@@ -42,7 +42,7 @@ export class AuthService {
     return this.ensureProfile(displayName);
   }
 
-  async playAsGuest(displayName: string): Promise<UserProfile> {
+  async playAsGuest(displayName?: string): Promise<UserProfile> {
     await signInAnonymously(clientAuth());
     return this.ensureProfile(displayName);
   }

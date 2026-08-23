@@ -22,61 +22,44 @@
         </div>
       </div>
       <div id="overlay">
-        <section id="lobby" class="panel lobby">
+        <section id="lobby" class="panel lobby is-signed-out">
+          <canvas id="lobby-fighter" class="lobby-fighter-canvas"></canvas>
           <div class="lobby-character" id="character-column">
-            <button id="edit-avatar" class="edit-avatar" type="button">Edit</button>
-            <div class="character-stage" id="character-stage">
-              <div class="fighter-preview" id="fighter-preview">
-                <div class="acc acc-effect" data-slot="effect"></div>
-                <div class="acc acc-back" data-slot="back"></div>
-                <div class="fighter-body">
-                  <div class="acc acc-head" data-slot="head"></div>
-                  <div class="fighter-face">
-                    <span class="fighter-eye"></span>
-                    <div class="acc acc-face" data-slot="face"></div>
-                  </div>
-                  <div class="acc acc-body" data-slot="body"></div>
-                  <div class="acc acc-waist" data-slot="waist"></div>
-                  <div class="fighter-arm">
-                    <div class="fighter-hand">
-                      <div class="acc acc-hand" data-slot="right_hand"></div>
-                      <div class="acc acc-hand-left" data-slot="left_hand"></div>
-                    </div>
-                  </div>
-                  <div class="acc acc-feet" data-slot="feet"></div>
+            <div class="character-stage" id="character-stage"></div>
+            <div id="player-card" class="player-card is-locked">
+              <div class="character-platform" id="character-platform"></div>
+              <div id="player-card-locked" class="player-card-body">
+                <p class="eyebrow">Progress locked</p>
+                <h3>No fighter loaded</h3>
+                <p class="blurb">Play as guest or sign in to load your name, stats, and cosmetics.</p>
+              </div>
+              <div id="player-card-profile" class="player-card-body" hidden>
+                <p class="character-name" id="preview-name">Fighter</p>
+                <p class="player-stats" id="player-stats">Lv 1 · 0W 0L</p>
+                <button id="edit-avatar" type="button" data-skip-slap="true">Edit</button>
+              </div>
+              <div id="player-card-moves" class="player-card-body" hidden>
+                <p class="eyebrow">Try a move</p>
+                <div class="move-grid">
+                  <button type="button" data-demo-move="idle">Idle</button>
+                  <button type="button" data-demo-move="run">Run</button>
+                  <button type="button" data-demo-move="jump">Jump</button>
+                  <button type="button" data-demo-move="slap">Slap</button>
+                  <button type="button" data-demo-move="hit">Hit</button>
                 </div>
               </div>
-              <div class="character-platform"></div>
-              <p class="character-name" id="preview-name">Fighter</p>
-            </div>
-            <div id="avatar-editor" class="avatar-editor" hidden>
-              <p class="eyebrow">Avatar</p>
-              <div id="locker-grid" class="locker-grid"></div>
-              <p id="editor-hint" class="blurb" hidden></p>
-              <button id="save-avatar" type="button">Save</button>
             </div>
           </div>
-          <div class="lobby-options">
+          <div class="lobby-options" id="lobby-options">
             <div id="pane-landing" class="pane">
               <p class="eyebrow">Platform fighter</p>
               <h1>Tituah</h1>
-              <p class="blurb">Pick a path. Your fighter will slap it in.</p>
+              <p class="blurb">Your name and record stay locked until you play as guest or sign in.</p>
               <div class="option-stack">
-                <button id="choose-guest" type="button">Play as guest</button>
+                <button id="choose-guest" type="button" data-defer-shatter="true">Play as guest</button>
                 <button id="choose-login" class="secondary" type="button">Login</button>
               </div>
-            </div>
-            <div id="pane-guest" class="pane" hidden>
-              <p class="eyebrow">Guest</p>
-              <h2>What should we call you?</h2>
-              <p class="blurb">Leave it blank if you want. You can still jump into a match.</p>
-              <label>
-                Display name
-                <input id="display-name" maxlength="24" placeholder="Optional" autocomplete="nickname" />
-              </label>
-              <button id="guest-continue" type="button">Continue</button>
-              <button id="back-guest" class="ghost" type="button">Back</button>
-              <p id="guest-error" class="error" hidden></p>
+              <p id="landing-error" class="error" hidden></p>
             </div>
             <div id="pane-login" class="pane" hidden>
               <p class="eyebrow">Account</p>
@@ -95,16 +78,16 @@
                 <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
               </label>
               <div class="actions">
-                <button id="sign-in" type="button">Sign in</button>
-                <button id="sign-up" class="secondary" type="button">Create account</button>
+                <button id="sign-in" type="button" data-defer-shatter="true">Sign in</button>
+                <button id="sign-up" class="secondary" type="button" data-defer-shatter="true">Create account</button>
               </div>
               <button id="back-login" class="ghost" type="button">Back</button>
               <p id="auth-error" class="error" hidden></p>
             </div>
             <div id="pane-menu" class="pane" hidden>
-              <p class="eyebrow">Ready</p>
+              <p id="menu-kind" class="eyebrow">Ready</p>
               <h2>Let’s fight</h2>
-              <p id="profile-line" class="blurb">Welcome back.</p>
+              <p id="menu-blurb" class="blurb">Your fighter is loaded. Find a match when you’re ready.</p>
               <button id="join" type="button">Find match</button>
               <button id="sign-out" class="ghost" type="button">Sign out</button>
               <p class="hint">A / D move · Space jump / double jump · Hold click, J, or Z to charge slap</p>
@@ -114,15 +97,31 @@
               <p class="eyebrow">Matchmaking</p>
               <h2>Waiting for opponent</h2>
               <p class="blurb">Open a second window with another account, or a guest in a private window.</p>
+              <button id="cancel-wait" class="ghost" type="button">Cancel</button>
             </div>
             <div id="pane-result" class="pane" hidden>
               <p class="eyebrow">Match over</p>
               <h2 id="result-title">Winner</h2>
               <button id="again" type="button">Fight again</button>
             </div>
+            <div id="pane-edit" class="pane" hidden>
+              <p class="eyebrow">Fighter</p>
+              <h2>Edit</h2>
+              <p class="blurb">Change your name and equip items. Use the platform under your fighter to preview moves.</p>
+              <label>
+                Display name
+                <input id="display-name" maxlength="24" placeholder="Fighter" autocomplete="nickname" />
+              </label>
+              <div id="locker-grid" class="locker-grid"></div>
+              <p id="editor-hint" class="blurb" hidden></p>
+              <p id="edit-error" class="error" hidden></p>
+              <button id="save-avatar" type="button">Save</button>
+              <button id="back-edit" class="ghost" type="button">Back</button>
+            </div>
           </div>
         </section>
       </div>
+      <div id="shatter-layer" class="shatter-layer" hidden></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
