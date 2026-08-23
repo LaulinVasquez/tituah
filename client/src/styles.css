@@ -356,15 +356,13 @@ button.ghost {
 }
 
 .player-stats {
-  margin: 0 0 12px;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
 }
 
 #edit-avatar {
-  width: auto;
-  padding: 8px 14px;
-  font-size: 13px;
+  margin-top: 10px;
 }
 
 .move-grid {

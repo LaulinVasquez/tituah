@@ -105,6 +105,7 @@ export class Ui {
         if (!button || button.disabled || this.loading) return;
         if (button.dataset.slapReplay === "true") return;
         if (button.classList.contains("item-card")) return;
+        if (button.dataset.stage) return;
         const demo = button.dataset.demoMove;
         if (demo && isDemoMove(demo)) {
           event.preventDefault();
@@ -392,14 +393,12 @@ export class Ui {
   private updatePlayerCard(): void {
     const locked = !this.profile;
     const editing = this.pane === "edit";
-    const busy = this.pane === "waiting" || this.pane === "result";
     required("#player-card-locked").hidden = !locked;
     required("#player-card-profile").hidden = locked || editing;
     required("#player-card-moves").hidden = locked || !editing;
     this.playerCard.classList.toggle("is-locked", locked);
     this.playerCard.classList.toggle("is-moves", !locked && editing);
     this.lobby.classList.toggle("is-signed-out", locked);
-    this.editButton.hidden = busy;
     if (!this.profile) {
       this.menuKind.textContent = "Ready";
       this.menuBlurb.textContent = "Your fighter is loaded. Find a match when you’re ready.";
