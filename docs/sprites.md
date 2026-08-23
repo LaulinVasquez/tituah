@@ -1,1022 +1,795 @@
-# Enhanced Character Rendering, Customization & Pause Menu
+# Match Game Screen to Stage Background Dimensions
 
 ## Objective
 
-Upgrade the current platform-fighter presentation using the new enhanced sprite sheet.
+Update the PixiJS game viewport so the game screen uses the exact aspect ratio of the stage background artwork.
 
-This task should:
+The background must **never be stretched or distorted**.
 
-1. Replace the current sprite atlas with the newer, better-spaced sprite artwork.
-2. Improve character rendering and animation quality.
-3. Add character color customization.
-4. Add optional accessories/cosmetics.
-5. Add an in-game pause system.
-6. Add a pause menu containing:
+All three stages should share the same logical game-world dimensions so:
 
-   * Resume
-   * Customize Character
-   * Quit Game
-7. Preserve all existing authoritative multiplayer, physics, combat, prediction, reconciliation, and interpolation behavior.
-
-Do **not** redesign the underlying game simulation.
+* Physics remain consistent.
+* Platforms remain correctly positioned.
+* Characters remain correctly scaled.
+* Multiplayer clients see the same world.
+* Backgrounds can be swapped without changing gameplay coordinates.
 
 ---
 
-# New Sprite Asset
+# Important
 
-Use the newly supplied sprite sheet as the canonical visual source.
-
-Recommended location:
+This task is primarily about:
 
 ```text
-client/public/assets/characters/fighter-main-spritesheet.png
+GAME VIEWPORT
+CAMERA
+BACKGROUND SCALING
+RESPONSIVE DISPLAY
+WORLD COORDINATES
 ```
 
-Preserve older sprite assets for now so we can revert if necessary.
+Do not change:
 
-Do not overwrite the original source file destructively.
-
----
-
-# Why This Sprite Sheet Replaces the Previous One
-
-The new sheet intentionally has substantially more spacing between individual frames.
-
-This should solve problems from the old atlas such as:
-
-* Hands overlapping neighboring idle frames.
-* Cropping neighboring sprites.
-* Difficult rectangular texture extraction.
-* Animation frames containing unwanted pieces.
-* Aggressive cropping removing parts of the actual fighter.
-
-Rebuild the atlas coordinates against the **new image**.
-
-Do not reuse old coordinates.
+* Combat
+* Knockback
+* Damage
+* Player physics
+* WebSocket behavior
+* Prediction
+* Reconciliation
+* Interpolation
 
 ---
 
-# Required Animation Groups
+# 1. Inspect the Background Assets
 
-Extract clean frames for:
+Before changing the renderer, inspect the actual dimensions of the three background images.
 
-```text
-idle
-run
-jump
-fall
-land
-
-slapCharge
-slapAttack
-slapRecovery
-
-hit
-ko
-```
-
-The new sprite sheet should allow multiple idle frames again.
-
-Use them if they can now be extracted cleanly.
-
----
-
-# Frame Extraction
-
-Inspect the real image dimensions and define explicit source rectangles.
-
-Do not assume a uniform grid.
-
-Example architecture:
+Determine:
 
 ```ts
-export interface FighterFrame {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-
-  offsetX?: number;
-  offsetY?: number;
-  scale?: number;
-}
+backgroundWidth
+backgroundHeight
+aspectRatio = backgroundWidth / backgroundHeight
 ```
 
-And:
+Do not guess the dimensions.
 
-```ts
-export const fighterAnimations = {
-  idle: [],
-  run: [],
-  jump: [],
-  fall: [],
-  land: [],
-  slapCharge: [],
-  slapAttack: [],
-  slapRecovery: [],
-  hit: [],
-  ko: [],
-};
-```
+Use the actual image metadata.
 
-Use the actual measured coordinates.
+All stage backgrounds should ideally use the same aspect ratio.
 
 ---
 
-# Ignore Sheet Labels
+# 2. Establish a Fixed Logical Game Resolution
 
-Do not render:
+The game should have ONE logical world resolution.
+
+Prefer a 16:9 logical canvas if the supplied backgrounds are 16:9.
+
+Recommended:
+
+```ts
+export const GAME_WIDTH = 1920;
+export const GAME_HEIGHT = 1080;
+export const GAME_ASPECT_RATIO =
+  GAME_WIDTH / GAME_HEIGHT;
+```
+
+If the supplied backgrounds use another ratio, use that ratio instead.
+
+The important rule is:
 
 ```text
-IDLE
-RUN
-JUMP
-FALL
-LAND
-SLAP
+BACKGROUND ASPECT RATIO
+        =
+GAME WORLD ASPECT RATIO
+```
+
+---
+
+# 3. Game World vs Browser Size
+
+Separate:
+
+```text
+GAME WORLD
+```
+
+from:
+
+```text
+BROWSER DISPLAY SIZE
+```
+
+The simulation should always think the world is:
+
+```text
+1920 × 1080
+```
+
+or whatever logical resolution is selected.
+
+The browser may display it as:
+
+```text
+1280 × 720
+960 × 540
+1600 × 900
+```
+
+but the logical coordinates remain unchanged.
+
+---
+
+# 4. Responsive Scaling
+
+Scale the complete PixiJS game uniformly.
+
+Calculate:
+
+```ts
+const scale = Math.min(
+  availableWidth / GAME_WIDTH,
+  availableHeight / GAME_HEIGHT
+);
+```
+
+Then:
+
+```ts
+displayWidth = GAME_WIDTH * scale;
+displayHeight = GAME_HEIGHT * scale;
+```
+
+Center the game viewport.
+
+Do NOT independently scale X and Y.
+
+Never do:
+
+```ts
+scaleX = availableWidth / GAME_WIDTH;
+scaleY = availableHeight / GAME_HEIGHT;
+```
+
+if those values are different.
+
+That would distort the artwork.
+
+---
+
+# 5. Letterboxing
+
+If the browser aspect ratio does not match the game:
+
+Use letterboxing.
+
+Example wide browser:
+
+```text
+┌────────────────────────────────────────────┐
+│                                            │
+│      ┌──────────────────────────────┐      │
+│      │                              │      │
+│      │          GAME                │      │
+│      │          16:9                │      │
+│      │                              │      │
+│      └──────────────────────────────┘      │
+│                                            │
+└────────────────────────────────────────────┘
+```
+
+Do not stretch the game to eliminate the empty space.
+
+Use a dark/neutral outer background.
+
+---
+
+# 6. Background Rendering
+
+The background should cover the logical game viewport exactly.
+
+Conceptually:
+
+```ts
+background.width = GAME_WIDTH;
+background.height = GAME_HEIGHT;
+```
+
+BUT only do this if the source image has the same aspect ratio.
+
+Prefer scale-based sizing:
+
+```ts
+const scale = GAME_WIDTH / texture.width;
+
+background.scale.set(scale);
+```
+
+Verify resulting height matches `GAME_HEIGHT`.
+
+---
+
+# 7. Do Not Crop Important Void Space
+
+This is extremely important for this game.
+
+The game is based on:
+
+```text
 HIT
-KO
-COLOR VARIANTS
-FACIAL EXPRESSIONS
-ACCESSORIES
+↓
+KNOCKBACK
+↓
+PLAYER FLIES OFF PLATFORM
+↓
+PLAYER ATTEMPTS TO RECOVER
+↓
+BLAST ZONE
 ```
 
-These are only organizational labels.
+Therefore do NOT use aggressive:
 
-Gameplay textures must contain only the relevant artwork.
+```text
+object-fit: cover
+```
+
+style behavior that crops the edges of the background.
+
+We need to see the entire intended arena.
+
+Prefer:
+
+```text
+contain
+```
+
+behavior.
 
 ---
 
-# Frame Spacing
+# 8. Stage Must Not Fill the Screen
 
-Because the new sheet includes better spacing, favor slightly generous crop rectangles.
+The playable platforms should occupy only the central portion of the game world.
 
-Preserve:
+Example:
 
-* Hands
-* Shoes
-* Attack trails when relevant
-* Dust when intentionally part of a frame
+```text
+┌───────────────────────────────────────────────┐
+│                                               │
+│                   AIR                         │
+│                                               │
+│            ┌─────────────┐                    │
+│                                               │
+│     ┌───────┐       ┌───────┐                │
+│                                               │
+│          ━━━━━━━━━━━━━━━━                     │
+│                                               │
+│                                               │
+│                    VOID                       │
+│                                               │
+└───────────────────────────────────────────────┘
+```
 
-Avoid:
-
-* Neighboring fighters
-* Text labels
-* Other effects
-* Other animation states
+Do NOT stretch the stage platforms from edge to edge.
 
 ---
 
-# Character Rendering Upgrade
+# 9. Recovery Space
 
-Improve the current `FighterSprite` system rather than replacing it with ad-hoc rendering.
+Players need significant room outside the platform layout.
 
-The fighter should feel like a polished animated game character.
+Target approximately:
 
-Preserve:
+```text
+15–25% horizontal margin
+```
 
-* Cached textures
-* Persistent sprite instances
-* Local animation timing
-* Horizontal flipping
-* Foot-based alignment
-* Collider independence
-* Respawn flashing
+between the outermost playable platform and screen edge.
+
+And substantial vertical space:
+
+```text
+above stage
+below stage
+```
+
+This lets knockback remain visible.
+
+Example:
+
+```text
+                ↑
+          recovery space
+
+
+      platform     platform
+
+         MAIN PLATFORM
+
+
+          recovery space
+                ↓
+
+             BLAST ZONE
+```
 
 ---
 
-# Animation Timing
+# 10. Camera
 
-Tune animation speeds individually.
+The camera should initially show the complete arena.
 
-Suggested starting values:
+Do not tightly follow the local player.
 
-```text
-Idle       5–7 FPS
-Run        10–14 FPS
-Jump       8–10 FPS
-Fall       6–8 FPS
-Land       10–12 FPS
+Both fighters should generally remain visible.
 
-Charge     8–10 FPS
-Slap       14–18 FPS
-Recovery   8–12 FPS
-
-Hit        12–16 FPS
-KO         8–10 FPS
-```
-
-These are tuning targets, not strict requirements.
-
-Animations should feel responsive.
-
----
-
-# Animation Priority
-
-Use a clear priority system.
-
-Recommended priority:
+The camera should prioritize:
 
 ```text
-KO
-↓
-Hit
-↓
-Slap Attack
-↓
-Slap Charge
-↓
-Slap Recovery
-↓
-Land
-↓
-Jump/Fall
-↓
-Run
-↓
-Idle
-```
-
-Higher-priority animations should not be interrupted incorrectly by locomotion.
-
----
-
-# Slap Animation
-
-The slap remains an important gameplay attack.
-
-Synchronize visual states with existing server-controlled combat:
-
-```text
-charge state
-→ slapCharge
-
-active attack state
-→ slapAttack
-
-cooldown/recovery
-→ slapRecovery
-```
-
-The strongest slap visual should approximately correspond with the authoritative active hit window.
-
-Do not move hit detection to the client.
-
----
-
-# Additional Visual Effects
-
-The sheet includes reusable effects such as:
-
-```text
-dust
-impact burst
-slap swipe
-stars
-smoke
-spiral
-```
-
-Begin using these where appropriate.
-
-Priority:
-
-## Running / Landing
-
-Use small dust effects.
-
-## Successful Slap
-
-Spawn:
-
-```text
-impact burst
-```
-
-at or near the hit location.
-
-## Strong Slap
-
-Optionally combine:
-
-```text
-slap swipe
+entire stage
 +
-impact burst
-```
-
-## High-Knockback Hit
-
-Use:
-
-```text
-stars
-```
-
-briefly where appropriate.
-
-## KO
-
-Smoke or spiral effects may be used carefully.
-
-Effects must remain cosmetic.
-
----
-
-# Particle Lifetime
-
-Effects must clean themselves up.
-
-Do not leave abandoned Pixi objects in the scene.
-
-Implement something reusable such as:
-
-```ts
-spawnEffect(type, x, y, facing);
-```
-
-Supported initial types might include:
-
-```text
-dust
-impact
-slapSwipe
-stars
-smoke
+knockback space
++
+both players
 ```
 
 ---
 
-# Player Colors
+# 11. Dynamic Camera Zoom
 
-The sheet includes:
+If the game already has camera logic, improve it so the camera can zoom out slightly when players separate.
 
-```text
-orange
-red
-blue
-green
-yellow
-purple
-```
-
-Use these as the game's initial character-color options.
-
-The user should be able to select a preferred fighter color.
-
----
-
-# Character Customization
-
-Create a lightweight character customization screen.
-
-Do not build a large cosmetics system yet.
-
-Initial options:
-
-## Body Color
+Conceptually:
 
 ```text
-Orange
-Red
-Blue
-Green
-Yellow
-Purple
+players close
+→ normal camera
+
+players separating
+→ slight zoom out
+
+player launched far away
+→ more zoom out
 ```
 
-## Accessories
-
-The sprite sheet includes examples such as:
-
-```text
-Sunglasses
-Crown
-Red Bandana
-Black Cap
-Blue Bandana
-Top Hat
-Gold Chain
-```
-
-Implement accessories only if they can be cleanly extracted and layered over the character.
-
-If layering them reliably requires substantial additional architecture, complete color customization first and document accessories as the next step.
-
----
-
-# Customization Architecture
-
-Create a small visual configuration model.
+Set strict limits.
 
 Example:
 
 ```ts
-export type FighterColor =
-  | "orange"
-  | "red"
-  | "blue"
-  | "green"
-  | "yellow"
-  | "purple";
-
-export type FighterAccessory =
-  | "none"
-  | "sunglasses"
-  | "crown"
-  | "red-bandana"
-  | "black-cap"
-  | "blue-bandana"
-  | "top-hat"
-  | "gold-chain";
-
-export interface FighterAppearance {
-  color: FighterColor;
-  accessory: FighterAccessory;
-}
+const CAMERA_MAX_ZOOM = 1.0;
+const CAMERA_MIN_ZOOM = 0.78;
 ```
 
-Keep appearance separate from gameplay state.
+Do not allow extreme zoom.
 
 ---
 
-# Important Multiplayer Rule
+# 12. Camera Centering
 
-Customization is cosmetic.
+Camera target should approximately use the midpoint between living players:
 
-It must **not** influence:
+```ts
+const centerX =
+  (player1.x + player2.x) / 2;
 
-```text
-hitbox size
-movement speed
-jump height
-damage
-knockback
-lives
-attack size
-physics
+const centerY =
+  (player1.y + player2.y) / 2;
 ```
+
+Smoothly interpolate toward the target.
+
+Do not instantly snap the camera.
 
 ---
 
-# Multiplayer Appearance Synchronization
+# 13. Background and Camera
 
-Other players must be able to see the selected appearance.
+The background should NOT move exactly like gameplay platforms if that makes the world feel flat.
 
-Unlike animation frames, appearance selection is valid network state.
-
-Synchronize only:
-
-```text
-color
-accessory
-```
-
-Do not synchronize:
-
-```text
-current sprite frame
-animation timer
-render position
-visual effect frame
-```
-
-Clients should still determine animations locally from authoritative gameplay state.
-
----
-
-# Character Selection UI
-
-Create a visually clean character customization interface.
-
-Suggested layout:
-
-```text
-CUSTOMIZE FIGHTER
-
-        [ Character Preview ]
-
-COLOR
-
-🟠  🔴  🔵  🟢  🟡  🟣
-
-ACCESSORY
-
-None
-Sunglasses
-Crown
-Bandana
-Cap
-Top Hat
-Gold Chain
-
-[ APPLY ]
-```
-
-Display the actual animated fighter as the preview if practical.
-
-Idle animation would be ideal.
-
----
-
-# Current Player Identification
-
-Once customization exists, do not rely exclusively on color to identify the local player.
-
-Add a subtle local-player indicator.
+Use extremely subtle parallax.
 
 Example:
 
 ```text
-▼
-YOU
+background     0.05–0.15
+stage          1.0
 ```
 
-above the local fighter.
+But ensure the background never exposes empty/unrendered areas.
 
-Do not make it visually distracting.
+If necessary, keep the background fixed to the viewport.
 
 ---
 
-# Damage UI
+# 14. Platform Coordinate System
 
-Retain the improved damage percentage badge.
-
-Continue showing damage close enough to identify the player without covering the fighter.
-
-Improve styling if necessary.
-
-Damage intensity can scale visually.
+Platform positions should use the logical game coordinates.
 
 Example:
-
-```text
-0–49%
-normal
-
-50–99%
-warning
-
-100%+
-danger
-```
-
-Do not overdo animations.
-
----
-
-# Pause System
-
-Add a real pause menu.
-
-The menu should contain:
-
-```text
-PAUSED
-
-RESUME
-
-CUSTOMIZE CHARACTER
-
-QUIT GAME
-```
-
----
-
-# Pause Controls
-
-Preferred control:
-
-```text
-SPACE
-```
-
-However:
-
-Before assigning Space to pause, inspect the existing control scheme.
-
-### If Space is currently unused
-
-Use:
-
-```text
-SPACE = Pause / Resume
-```
-
-### If Space currently performs an important action
-
-Do **not** break that action.
-
-Use:
-
-```text
-ESC = Pause / Resume
-```
-
-Optionally also support:
-
-```text
-P
-```
-
-The UI should display the actual configured pause key.
-
----
-
-# Multiplayer Pause Behavior
-
-This requires special care.
-
-One player must **not freeze the authoritative server simulation for everyone** merely by opening a local menu.
-
-Therefore distinguish between:
-
-## Local Pause Menu
-
-Opening the pause overlay should:
-
-* Stop local gameplay input.
-* Display the pause UI.
-* Keep receiving server snapshots.
-* Keep the network connection alive.
-* Avoid freezing the remote player's game.
-* Avoid pausing the authoritative server simulation.
-
-This is effectively a local menu state.
-
-The match continues unless a future synchronized-pause system is explicitly implemented.
-
----
-
-# While Local Pause Menu Is Open
-
-The client should not send active movement/attack inputs.
-
-Immediately send or transition to neutral input:
 
 ```ts
 {
-  left: false,
-  right: false,
-  jump: false,
-  attack: false
+  x: 960,
+  y: 700,
+  width: 650,
+  height: 80
 }
 ```
 
-This prevents the player's previous input from remaining stuck.
+NOT browser pixels.
+
+Do not calculate authoritative platform positions using:
+
+```ts
+window.innerWidth
+window.innerHeight
+```
+
+The server and clients must use the same coordinate system.
 
 ---
 
-# Resume
+# 15. Stage Layout
 
-Selecting:
+Each stage can have different platform geometry while still sharing the same world dimensions.
+
+For example:
+
+## Barnyard Brawl
+
+Platforms should feel like elevated farm/windmill structures.
 
 ```text
-RESUME
+          SMALL
+
+   SIDE           SIDE
+
+        MAIN
+
+         VOID
 ```
 
-should:
-
-* Close the menu.
-* Restore gameplay input.
-* Keep the same match connection.
-* Require no reconnect.
+The farm scenery should appear far behind/below the fighters.
 
 ---
 
-# Customize Character From Pause Menu
+## Fridge Frenzy
 
-Selecting:
-
-```text
-CUSTOMIZE CHARACTER
-```
-
-opens the customization UI.
-
-Allow the player to:
-
-* Preview colors.
-* Preview accessories.
-* Apply appearance.
-
-Then allow:
+Use refrigerator shelves as the fighting platforms.
 
 ```text
-BACK TO PAUSE
+             TOP
+
+       LEFT       RIGHT
+
+            MAIN
+
+
+          DARK VOID
 ```
 
-or:
-
-```text
-APPLY & RETURN
-```
-
-The match should remain connected.
+The lower refrigerator area must visually communicate that falling below the fighting shelves means danger.
 
 ---
 
-# Appearance Changes During Match
+## Sky-High Meadow
 
-For the prototype, appearance may be changed during an active match.
+Use floating islands.
 
-When Apply is selected:
+```text
+             TOP
 
-1. Save local appearance selection.
-2. Notify server of appearance state if necessary.
-3. Broadcast appearance to opponent.
-4. Update the local fighter.
-5. Return to pause menu.
+      LEFT         RIGHT
 
-Do not respawn or reset gameplay state when appearance changes.
+           MAIN
+
+
+          CLOUDS
+
+           VOID
+```
+
+This stage should have the largest feeling of vertical depth.
 
 ---
 
-# Quit Game
+# 16. Background Asset System
 
-Selecting:
+Use one background per stage.
 
-```text
-QUIT GAME
-```
-
-must not immediately destroy the session accidentally.
-
-Show confirmation:
+Recommended:
 
 ```text
-QUIT CURRENT MATCH?
+client/public/assets/stages/backgrounds/
 
-Your opponent will be notified.
-
-CANCEL
-QUIT MATCH
+barnyard-brawl.png
+fridge-frenzy.png
+sky-high-meadow.png
 ```
 
-If confirmed:
+Do not combine all three backgrounds into one runtime image.
 
-1. Tell the server that the player is leaving.
-2. Disconnect/leave the current match correctly.
-3. Clean up local game state.
-4. Return to the main menu.
-5. Ensure no stale animation loops or Pixi objects remain.
+Each stage must load its own background.
 
 ---
 
-# Opponent Quit
+# 17. Stage Configuration
 
-If the remote player quits:
+Create or extend stage visual configuration.
 
-Display something similar to:
+Example:
 
-```text
-OPPONENT LEFT THE MATCH
+```ts
+interface StageVisualConfig {
+  id: StageId;
+
+  background: string;
+
+  logicalWidth: number;
+  logicalHeight: number;
+
+  platformTheme:
+    | "farm"
+    | "fridge"
+    | "meadow";
+}
 ```
 
-Provide:
+Example:
 
-```text
-RETURN TO MENU
-```
+```ts
+barnyard: {
+  background:
+    "/assets/stages/backgrounds/barnyard-brawl.png",
 
-Do not leave the remaining user inside a broken match.
+  logicalWidth: GAME_WIDTH,
+  logicalHeight: GAME_HEIGHT,
 
----
-
-# Pause Menu Styling
-
-Improve the presentation significantly.
-
-The pause screen should feel like part of the game rather than a plain HTML modal.
-
-Direction:
-
-```text
-dark translucent overlay
-large animated fighter preview
-bold arcade typography
-rounded controls
-subtle motion
-clear selected states
-```
-
-Keep it readable.
-
-Do not obscure whether the match is continuing in the background.
-
-A small message should say:
-
-```text
-Online match continues while this menu is open.
+  platformTheme: "farm"
+}
 ```
 
 ---
 
-# Menu Animation
+# 18. PixiJS Renderer
 
-Use restrained transitions.
+Create a root world container.
 
-Examples:
-
-```text
-fade overlay
-slight menu scale-in
-button state transitions
-fighter idle preview
-```
-
-Avoid long animations.
-
-Opening/closing the pause menu should feel immediate.
-
----
-
-# Rendering Polish
-
-Improve overall Pixi rendering presentation.
-
-Review:
-
-* Sprite scaling
-* Texture filtering
-* Anchor consistency
-* Fighter alignment
-* Damage badge positioning
-* Character flipping
-* Effect depth/layer order
-* Platform/fighter overlap
-* Hit feedback
-
-The new sprite should look crisp.
-
-If pixel smoothing creates poor results for this illustration style, test PixiJS texture scaling modes and choose the one that looks best.
-
----
-
-# Renderer Layer Organization
-
-Keep sensible render layers such as:
+Recommended structure:
 
 ```text
-Background
-Stage
-Stage Effects
-Characters
-Character Effects
-Projectiles / Attacks
-Foreground Effects
-HUD
-Menus
+Pixi Application
+│
+└── viewportContainer
+    │
+    ├── backgroundLayer
+    │
+    ├── stageLayer
+    │
+    ├── playerLayer
+    │
+    ├── effectsLayer
+    │
+    └── hudLayer
 ```
 
-Avoid inserting everything directly into one container if the current renderer would benefit from clearer grouping.
-
-Do not unnecessarily rewrite working renderer architecture.
+The complete viewport should respect the logical game resolution.
 
 ---
 
-# Camera / Impact Polish
+# 19. HUD
 
-If the current renderer already supports camera movement or impact feedback, improve it carefully.
+HUD should remain inside the safe game area.
 
-If not, a very small hit shake may be added.
+For example:
+
+```text
+P1                                         P2
+★★★                                       ★★★
+34%                                       72%
+```
+
+Do not position HUD based directly on arbitrary browser dimensions.
+
+Use game-world/safe-area coordinates.
+
+---
+
+# 20. Resize Handling
+
+Listen for browser resize.
+
+On resize:
+
+```text
+recalculate display scale
+↓
+center viewport
+↓
+keep logical world unchanged
+```
+
+Do not recreate:
+
+* game state
+* players
+* sprites
+* WebSocket connection
+* stage
+
+when resizing.
+
+Only update rendering scale/layout.
+
+---
+
+# 21. High-DPI Rendering
+
+PixiJS should render cleanly on Retina/high-DPI displays.
+
+Use the existing PixiJS resolution configuration if available.
+
+If not, configure appropriate device-pixel-ratio handling while keeping logical coordinates unchanged.
+
+Avoid unnecessarily huge render buffers.
+
+---
+
+# 22. Fullscreen-Like Presentation
+
+The game should feel like a proper browser game.
+
+The surrounding page should be minimal.
+
+Conceptually:
+
+```text
+██████████████████████████████████████
+
+        GAME VIEWPORT — 16:9
+
+██████████████████████████████████████
+```
+
+Center the game.
+
+Remove unnecessary page scrolling while actively playing.
+
+---
+
+# 23. Critical Multiplayer Requirement
+
+Screen size must NEVER affect gameplay.
 
 Example:
 
 ```text
-normal slap hit
-→ tiny shake
+Player A
+2560×1440 monitor
 
-high knockback slap
-→ stronger shake
+Player B
+1920×1080 monitor
+
+Player C
+1366×768 laptop
 ```
 
-This remains client-side visual feedback.
-
-Never alter server physics.
-
----
-
-# Asset Caching
-
-All extracted textures should remain cached.
-
-Do not rebuild source textures every animation frame.
-
-Recommended lifecycle:
+All players must still have:
 
 ```text
-load sheet
-↓
-create atlas textures once
-↓
-cache textures
-↓
-reuse AnimatedSprite / Sprite objects
+same world dimensions
+same platform coordinates
+same blast zones
+same player coordinates
+same physics
 ```
+
+Only rendering scale differs.
 
 ---
 
-# Existing Systems That Must Remain Intact
+# 24. Background Loading
 
-Do not break:
+Preload the selected stage background before starting the match.
+
+Do not begin gameplay with a blank canvas while the image downloads.
+
+Flow:
 
 ```text
-authoritative server simulation
-60 Hz simulation
-20 Hz snapshots
-client movement prediction
-server reconciliation
-remote interpolation
-platform collision
-damage percentage
-knockback
-blast zones
-lives
-respawns
-match winner selection
-WebSocket protocol
+stage selected
+↓
+load background
+↓
+load platform textures
+↓
+textures ready
+↓
+start/render match
 ```
 
-Only extend networking where required for cosmetic appearance selection and clean player-leave handling.
+Show a short loading state if necessary.
 
 ---
 
-# Testing
+# 25. Verify Background Quality
 
-Verify all of the following.
+Make sure the renderer does not:
 
-## Sprites
+* Blur the background excessively.
+* Stretch it.
+* Crop important edges.
+* Distort it.
+* Render at the wrong ratio.
+* Leave white/transparent gaps.
+* Cause visible seams.
 
-* New sprite sheet loads.
-* No old atlas coordinates remain accidentally.
-* Idle frames are clean.
-* Run frames are clean.
-* Jump works.
-* Fall works.
-* Land works.
-* Slap charge works.
-* Slap attack works.
-* Slap recovery works.
-* Hit works.
-* KO works.
-* No neighboring frames appear.
-* No sheet labels appear.
+---
 
-## Rendering
+# 26. Testing
 
-* Sprite remains aligned at the feet.
-* Animation switching does not make character jump visually.
-* Facing flip works.
-* No frame stretching.
-* Player collider remains unchanged.
-* Effects clean themselves up.
-
-## Customization
-
-* Player can open customization.
-* All working body colors preview correctly.
-* Selected color applies.
-* Opponent sees selected color.
-* Accessories work if implemented.
-* Appearance changes do not affect gameplay.
-
-## Pause
-
-* Pause key opens menu.
-* Gameplay input becomes neutral.
-* Remote network updates continue.
-* Resume works.
-* Customize Character works.
-* Quit shows confirmation.
-* Quit cleanly leaves match.
-* Opponent receives disconnect/leave state.
-* Returning to menu does not leave stale objects/listeners.
-
-## Multiplayer
-
-Test with two clients.
-
-Confirm:
+Test at:
 
 ```text
-Player A customizes
-→ Player B sees appearance
-
-Player A pauses
-→ Player B continues playing
-
-Player A resumes
-→ synchronization remains correct
-
-Player A quits
-→ Player B is notified
+1920×1080
+1600×900
+1440×900
+1366×768
+1280×720
 ```
+
+Also resize the browser manually.
+
+Verify:
+
+* Background aspect ratio remains correct.
+* No stretching.
+* Platforms remain aligned.
+* Players remain aligned.
+* HUD remains readable.
+* Void remains visible.
+* Blast-zone travel is visible.
+* No gameplay coordinates change.
+* Multiplayer stays synchronized.
 
 ---
 
-# Build Verification
+# Expected Result
+
+The final presentation should feel like:
+
+```text
+              BACKGROUND WORLD
+
+     ← large recovery / knockback space →
+
+              [ platform ]
+
+       [ platform ]   [ platform ]
+
+           [ MAIN STAGE ]
+
+
+              ↓ VOID ↓
+
+
+             BLAST ZONE
+```
+
+The background defines the visual dimensions of the game screen.
+
+The stage exists **inside** that world instead of filling the screen.
+
+When a character gets hit hard, we should visibly watch them fly away from the stage and attempt to recover before reaching the blast zone.
+
+That visual space is essential to the game.
+
+---
+
+# Verification
 
 Run:
 
@@ -1027,28 +800,26 @@ npm run build
 
 Both must pass.
 
-Also run the game manually with two clients.
+Test with two networked players to ensure different browser/window sizes do not affect authoritative gameplay.
 
 ---
 
 # Completion Report
 
-When complete, provide:
+Report:
 
-1. Files created.
-2. Files modified.
-3. New sprite-sheet path.
-4. Atlas coordinates/animation groups implemented.
-5. Animation timing changes.
-6. Rendering improvements.
-7. Character customization options implemented.
-8. Accessories implemented or deferred.
-9. Appearance synchronization approach.
-10. Pause key selected and why.
-11. Pause behavior in multiplayer.
-12. Quit-match flow.
-13. Known limitations.
-14. Typecheck result.
-15. Production build result.
+1. Actual background image dimensions discovered.
+2. Logical game resolution selected.
+3. Aspect ratio.
+4. Scaling strategy.
+5. Letterboxing behavior.
+6. Camera behavior.
+7. Recovery-space margins.
+8. Platform coordinate changes, if any.
+9. Resize behavior.
+10. Multiplayer consistency.
+11. Files modified.
+12. Typecheck result.
+13. Build result.
 
-Do not redesign the game or add new combat mechanics during this task.
+Do not implement additional gameplay mechanics during this task.

@@ -1,4 +1,4 @@
-import { TICK_DT, TICK_RATE, type PlayerInput, type ServerMessage } from "@tituah/shared";
+import { getStage, isStageId, TICK_DT, TICK_RATE, type PlayerInput, type ServerMessage } from "@tituah/shared";
 import { Match } from "./match.js";
 import type { Session } from "./session.js";
 import { createUserProfile, recordMatchResult } from "./services/firebase/game-data.js";
@@ -27,7 +27,12 @@ export class MatchManager {
     this.timer = null;
   }
 
-  async join(session: Session, name: string, idToken: string): Promise<Match> {
+  async join(
+    session: Session,
+    name: string,
+    idToken: string,
+    requestedStageId: string,
+  ): Promise<Match> {
     const decoded = await verifyIdToken(idToken);
     const profile = await createUserProfile(decoded.uid, {
       displayName: name,
@@ -42,7 +47,7 @@ export class MatchManager {
       this.leave(existing);
     }
 
-    const match = this.getOrCreateWaitingMatch();
+    const match = this.getOrCreateWaitingMatch(requestedStageId);
     const player = match.addPlayer(profile.uid, profile.displayName, profile.avatar);
     session.matchId = match.id;
     this.sessionsByPlayer.set(player.id, session);
@@ -115,16 +120,17 @@ export class MatchManager {
     return this.matches.get(session.matchId) ?? null;
   }
 
-  private getOrCreateWaitingMatch(): Match {
+  private getOrCreateWaitingMatch(requestedStageId: string): Match {
     if (this.waiting && this.waiting.status === "waiting") {
       return this.waiting;
     }
+    const stage = getStage(isStageId(requestedStageId) ? requestedStageId : "barnyard");
     const match = new Match(
       crypto.randomUUID(),
       (playerId, message) => {
         this.send(match, playerId, message);
       },
-      undefined,
+      stage,
       {
         onStart: (started) => {
           void matchesRepository

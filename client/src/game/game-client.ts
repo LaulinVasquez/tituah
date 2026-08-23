@@ -134,6 +134,7 @@ export class GameClient {
         type: "join",
         name: authService.profile?.displayName ?? this.ui.displayName(),
         idToken,
+        stageId: this.ui.stageId(),
       });
     } catch (error) {
       this.seekingMatch = false;
@@ -241,10 +242,10 @@ export class GameClient {
       return;
     }
     if (message.type === "player_hit") {
-      this.renderer.showHit(message.targetId, this.localTime);
+      this.renderer.showHit(message, this.localTime);
     }
     if (message.type === "player_respawn") {
-      this.renderer.showKo(message.playerId, this.localTime);
+      this.renderer.showVoidDeath(message.playerId, this.localTime);
     }
     if (message.type === "welcome") {
       if (!this.seekingMatch) return;
@@ -252,6 +253,7 @@ export class GameClient {
     }
     if (message.type === "match_started") {
       this.seekingMatch = false;
+      this.renderer.setStage(message.snapshot.stageId);
       this.localTime = this.state.snapshot?.time ?? 0;
       this.accumulator = 0;
       if (this.state.localPlayerId && this.state.snapshot) {
@@ -265,7 +267,9 @@ export class GameClient {
     }
     if (message.type === "match_ended") {
       for (const player of this.state.snapshot?.players ?? []) {
-        if (player.id !== this.state.winnerId) this.renderer.showKo(player.id, this.localTime);
+        if (player.id !== this.state.winnerId) {
+          this.renderer.showVoidDeath(player.id, this.localTime);
+        }
       }
       const winner = this.state.winnerId
         ? this.state.names.get(this.state.winnerId) ?? "Someone"

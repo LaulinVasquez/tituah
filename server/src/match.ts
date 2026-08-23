@@ -264,6 +264,7 @@ export class Match {
       lastProcessedInput[player.id] = player.lastInputSeq;
     }
     return {
+      stageId: this.map.id,
       tick: this.tick,
       time: this.time,
       status: this.status,

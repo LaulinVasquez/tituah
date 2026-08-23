@@ -13,7 +13,7 @@ export class MessageHandler {
     switch (message.type) {
       case "join":
         try {
-          await this.matches.join(session, message.name, message.idToken);
+          await this.matches.join(session, message.name, message.idToken, message.stageId);
         } catch (error) {
           const text = error instanceof Error ? error.message : "Join failed";
           session.socket.send(

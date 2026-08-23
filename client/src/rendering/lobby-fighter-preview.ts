@@ -102,7 +102,7 @@ export class LobbyFighterPreview {
     if (move === "run") void this.playRun(token);
     if (move === "jump") void this.playJump(token);
     if (move === "slap") void this.playSlapInPlace(token);
-    if (move === "hit") this.fighter.showHit(this.time);
+    if (move === "hit") this.fighter.showHit(this.time, 1, 1);
   }
 
   async slap(target: HTMLElement, onHit?: () => void): Promise<number> {

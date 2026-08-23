@@ -1,8 +1,10 @@
 import {
   AVATAR_FIELD_TO_SLOT,
+  isStageId,
   SLOT_TO_AVATAR_FIELD,
   type InventoryItem,
   type ItemSlot,
+  type StageId,
   type UserInventoryItem,
   type UserProfile,
 } from "@tituah/shared";
@@ -50,6 +52,7 @@ export class Ui {
   readonly menuError = required("#menu-error");
   readonly editError = required("#edit-error");
   readonly resultTitle = required("#result-title");
+  readonly stageButtons = document.querySelectorAll<HTMLButtonElement>("[data-stage]");
 
   private pane: LobbyPane = "landing";
   private paneBeforeEdit: LobbyPane = "landing";
@@ -59,6 +62,7 @@ export class Ui {
   private previewItems: InventoryItem[] = [];
   private profile: UserProfile | null = null;
   private fighter?: LobbyFighterPreview;
+  private selectedStage: StageId = "barnyard";
 
   get currentPane(): LobbyPane {
     return this.pane;
@@ -75,6 +79,16 @@ export class Ui {
   constructor() {
     const stored = localStorage.getItem("tituah:name");
     if (stored) this.loginNameInput.value = stored;
+    for (const button of this.stageButtons) {
+      button.addEventListener("click", () => {
+        const id = button.dataset.stage;
+        if (!isStageId(id)) return;
+        this.selectedStage = id;
+        for (const entry of this.stageButtons) {
+          entry.dataset.selected = String(entry === button);
+        }
+      });
+    }
     this.displayNameInput.addEventListener("input", () => {
       if (this.pane === "edit") this.setPreviewName(this.displayNameInput.value.trim() || "Fighter");
     });
@@ -136,6 +150,10 @@ export class Ui {
     if (source === "edit") return this.displayNameInput.value.trim() || "Fighter";
     if (source === "login") return this.loginNameInput.value.trim() || "Fighter";
     return this.profile?.displayName || this.loginNameInput.value.trim() || "Fighter";
+  }
+
+  stageId(): StageId {
+    return this.selectedStage;
   }
 
   email(): string {

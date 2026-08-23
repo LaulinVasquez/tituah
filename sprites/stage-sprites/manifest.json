@@ -1,0 +1,200 @@
+{
+  "barnyard_top_platform": {
+    "file": "/assets/stages/sprites/barnyard_top_platform.png",
+    "width": 265,
+    "height": 80,
+    "source_crop": [
+      1055,
+      57,
+      1320,
+      137
+    ]
+  },
+  "barnyard_side_platform": {
+    "file": "/assets/stages/sprites/barnyard_side_platform.png",
+    "width": 260,
+    "height": 81,
+    "source_crop": [
+      1040,
+      145,
+      1300,
+      226
+    ]
+  },
+  "barnyard_main_platform": {
+    "file": "/assets/stages/sprites/barnyard_main_platform.png",
+    "width": 375,
+    "height": 109,
+    "source_crop": [
+      1015,
+      229,
+      1390,
+      338
+    ]
+  },
+  "barnyard_hay_bale": {
+    "file": "/assets/stages/sprites/barnyard_hay_bale.png",
+    "width": 135,
+    "height": 88,
+    "source_crop": [
+      1375,
+      57,
+      1510,
+      145
+    ]
+  },
+  "barnyard_fence_post": {
+    "file": "/assets/stages/sprites/barnyard_fence_post.png",
+    "width": 80,
+    "height": 100,
+    "source_crop": [
+      1400,
+      160,
+      1480,
+      260
+    ]
+  },
+  "fridge_top_platform": {
+    "file": "/assets/stages/sprites/fridge_top_platform.png",
+    "width": 195,
+    "height": 81,
+    "source_crop": [
+      1070,
+      385,
+      1265,
+      466
+    ]
+  },
+  "fridge_left_platform": {
+    "file": "/assets/stages/sprites/fridge_left_platform.png",
+    "width": 165,
+    "height": 80,
+    "source_crop": [
+      1010,
+      470,
+      1175,
+      550
+    ]
+  },
+  "fridge_right_platform": {
+    "file": "/assets/stages/sprites/fridge_right_platform.png",
+    "width": 160,
+    "height": 80,
+    "source_crop": [
+      1200,
+      470,
+      1360,
+      550
+    ]
+  },
+  "fridge_main_platform": {
+    "file": "/assets/stages/sprites/fridge_main_platform.png",
+    "width": 360,
+    "height": 113,
+    "source_crop": [
+      1010,
+      555,
+      1370,
+      668
+    ]
+  },
+  "fridge_milk_carton": {
+    "file": "/assets/stages/sprites/fridge_milk_carton.png",
+    "width": 105,
+    "height": 103,
+    "source_crop": [
+      1390,
+      382,
+      1495,
+      485
+    ]
+  },
+  "fridge_jar": {
+    "file": "/assets/stages/sprites/fridge_jar.png",
+    "width": 110,
+    "height": 90,
+    "source_crop": [
+      1380,
+      485,
+      1490,
+      575
+    ]
+  },
+  "fridge_cheese": {
+    "file": "/assets/stages/sprites/fridge_cheese.png",
+    "width": 130,
+    "height": 85,
+    "source_crop": [
+      1380,
+      575,
+      1510,
+      660
+    ]
+  },
+  "meadow_top_platform": {
+    "file": "/assets/stages/sprites/meadow_top_platform.png",
+    "width": 240,
+    "height": 89,
+    "source_crop": [
+      1050,
+      706,
+      1290,
+      795
+    ]
+  },
+  "meadow_side_platform": {
+    "file": "/assets/stages/sprites/meadow_side_platform.png",
+    "width": 295,
+    "height": 100,
+    "source_crop": [
+      1015,
+      800,
+      1310,
+      900
+    ]
+  },
+  "meadow_main_platform": {
+    "file": "/assets/stages/sprites/meadow_main_platform.png",
+    "width": 370,
+    "height": 122,
+    "source_crop": [
+      1005,
+      900,
+      1375,
+      1022
+    ]
+  },
+  "meadow_ancient_arch": {
+    "file": "/assets/stages/sprites/meadow_ancient_arch.png",
+    "width": 140,
+    "height": 120,
+    "source_crop": [
+      1375,
+      700,
+      1515,
+      820
+    ]
+  },
+  "meadow_windmill": {
+    "file": "/assets/stages/sprites/meadow_windmill.png",
+    "width": 130,
+    "height": 120,
+    "source_crop": [
+      1380,
+      810,
+      1510,
+      930
+    ]
+  },
+  "meadow_floating_rock": {
+    "file": "/assets/stages/sprites/meadow_floating_rock.png",
+    "width": 120,
+    "height": 99,
+    "source_crop": [
+      1395,
+      925,
+      1515,
+      1024
+    ]
+  }
+}

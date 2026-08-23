@@ -22,7 +22,13 @@ export class PredictionManager {
   private player: PlayerState | null = null;
   private localId: string | null = null;
 
-  constructor(private readonly map: StageMap) {}
+  constructor(private map: StageMap) {}
+
+  setMap(map: StageMap): void {
+    this.map = map;
+    this.pending = [];
+    this.previousInput = emptyInput();
+  }
 
   reset(snapshot: MatchSnapshot, localId: string): void {
     this.localId = localId;

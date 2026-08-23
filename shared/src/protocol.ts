@@ -21,6 +21,7 @@ export type ServerMessage =
 export interface JoinMessage {
   type: "join";
   name: string;
+  stageId: string;
   idToken: string;
 }
 

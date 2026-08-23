@@ -88,9 +88,21 @@
               <p id="menu-kind" class="eyebrow">Ready</p>
               <h2>Let’s fight</h2>
               <p id="menu-blurb" class="blurb">Your fighter is loaded. Find a match when you’re ready.</p>
+              <p class="stage-heading">Select stage</p>
+              <div class="stage-select" role="group" aria-label="Select stage">
+                <button type="button" data-stage="barnyard" data-selected="true">
+                  <strong>Barnyard Brawl</strong><span>Sunset farm</span>
+                </button>
+                <button type="button" data-stage="fridge" data-selected="false">
+                  <strong>Fridge Frenzy</strong><span>Cold storage</span>
+                </button>
+                <button type="button" data-stage="meadow" data-selected="false">
+                  <strong>Sky-High Meadow</strong><span>Floating islands</span>
+                </button>
+              </div>
               <button id="join" type="button">Find match</button>
               <button id="sign-out" class="ghost" type="button">Sign out</button>
-              <p class="hint">A / D move · Space jump / double jump · Hold click, J, or Z to charge slap</p>
+              <p class="hint">A / D move · Space twice to double jump · S / ↓ drops through upper platforms · Hold Z to slap</p>
               <p id="menu-error" class="error" hidden></p>
             </div>
             <div id="pane-waiting" class="pane" hidden>

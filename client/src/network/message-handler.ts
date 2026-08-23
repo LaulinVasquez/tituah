@@ -1,4 +1,4 @@
-import type { ServerMessage } from "@tituah/shared";
+import { getStage, type ServerMessage } from "@tituah/shared";
 import type { GameState } from "../game/game-state.js";
 import type { InterpolationManager } from "../prediction/interpolation-manager.js";
 import type { PredictionManager } from "../prediction/prediction-manager.js";
@@ -20,6 +20,7 @@ export class MessageHandler {
         this.state.addRemoteName(message.playerId, message.name);
         break;
       case "match_started":
+        this.prediction.setMap(getStage(message.snapshot.stageId));
         this.state.beginMatch(message.snapshot, message.yourId);
         this.prediction.reset(message.snapshot, message.yourId);
         this.interpolation.reset(message.snapshot);
