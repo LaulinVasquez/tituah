@@ -1,6 +1,6 @@
 import { Assets, ColorMatrixFilter, Container, Rectangle, Sprite, Texture } from "pixi.js";
 import type { PlayerState } from "@tituah/shared";
-import { appearanceFromAvatar, appearanceKey, colorHue, type AccessorySprite, type FighterAppearance } from "./appearance.js";
+import { appearanceFromAvatar, appearanceKey, colorHue, extraAccessorySources, type AccessorySprite, type FighterAppearance } from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
@@ -16,6 +16,7 @@ const KO_DURATION = 0.65;
 const RESPAWN_HIDE_DURATION = 0.52;
 
 let texturePromise: Promise<Record<FighterAnimation, Texture[]>> | null = null;
+let extraTexturePromise: Promise<Map<string, Texture>> | null = null;
 
 function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
   if (texturePromise) return texturePromise;
@@ -36,6 +37,13 @@ function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
     return result;
   });
   return texturePromise;
+}
+
+function loadExtraTextures(): Promise<Map<string, Texture>> {
+  extraTexturePromise ??= Promise.all(
+    extraAccessorySources().map(async ({ id, url }) => [id, await Assets.load<Texture>(url)] as const),
+  ).then((entries) => new Map(entries));
+  return extraTexturePromise;
 }
 
 export class FighterSprite extends Container {
@@ -59,6 +67,7 @@ export class FighterSprite extends Container {
   private lastFacing: 1 | -1 | 0 = 0;
   private lastFrameIndex = -1;
   private lastFrameAnimation: FighterAnimation | null = null;
+  private extraTextures = new Map<string, Texture>();
 
   constructor(readonly playerId: string) {
     super();
@@ -71,6 +80,7 @@ export class FighterSprite extends Container {
   async load(): Promise<void> {
     this.textures = await loadTextures();
     this.sheet = await Assets.load<Texture>(FIGHTER_SHEET_URL);
+    this.extraTextures = await loadExtraTextures();
     this.sprite.texture = this.textures.idle[0];
   }
 
@@ -89,6 +99,39 @@ export class FighterSprite extends Container {
 
   showVoidDeath(time: number): void {
     this.hiddenUntil = Math.max(this.hiddenUntil, time + RESPAWN_HIDE_DURATION);
+  }
+
+  debugState(): {
+    playerId: string;
+    hiddenUntil: number;
+    koUntil: number;
+    animationStartedAt: number;
+    animation: FighterAnimation;
+    visible: boolean;
+  } {
+    return {
+      playerId: this.playerId,
+      hiddenUntil: this.hiddenUntil,
+      koUntil: this.koUntil,
+      animationStartedAt: this.animationStartedAt,
+      animation: this.animation,
+      visible: this.visible,
+    };
+  }
+
+  resetForMatch(): void {
+    this.hiddenUntil = 0;
+    this.koUntil = 0;
+    this.hitUntil = 0;
+    this.hitStartedAt = 0;
+    this.animationStartedAt = 0;
+    this.lastFrameIndex = -1;
+    this.lastFrameAnimation = null;
+    this.wasGrounded = true;
+    this.animation = "idle";
+    this.visible = true;
+    this.alpha = 1;
+    this.rotation = 0;
   }
 
   update(player: PlayerState, time: number): void {
@@ -191,9 +234,10 @@ export class FighterSprite extends Container {
     for (const accessory of accessories) {
       seen.add(accessory.id);
       let sprite = this.accessorySprites.get(accessory.id);
+      const extra = this.extraTextures.get(accessory.id);
       if (!sprite) {
         sprite = new Sprite(
-          new Texture({
+          extra ?? new Texture({
             source: this.sheet.source,
             frame: new Rectangle(
               accessory.frame.x,
@@ -207,7 +251,8 @@ export class FighterSprite extends Container {
         this.accessoryLayer.addChild(sprite);
         this.accessorySprites.set(accessory.id, sprite);
       }
-      const accessoryScale = 42 / accessory.frame.height;
+      const sourceHeight = extra?.height ?? accessory.frame.height;
+      const accessoryScale = (accessory.visualHeight ?? 42) / sourceHeight;
       sprite.scale.set(accessoryScale * facing, accessoryScale);
       sprite.position.set(accessory.anchorX * facing, accessory.anchorY);
       sprite.visible = true;

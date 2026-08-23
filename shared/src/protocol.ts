@@ -11,6 +11,7 @@ export type ServerMessage =
   | WelcomeMessage
   | PlayerJoinedMessage
   | PlayerLeftMessage
+  | MatchCountdownMessage
   | MatchStartedMessage
   | ServerSnapshot
   | PlayerHitMessage
@@ -49,17 +50,25 @@ export interface WelcomeMessage {
   playerId: string;
   matchId: string;
   player: PlayerState;
+  players: PlayerState[];
 }
 
 export interface PlayerJoinedMessage {
   type: "player_joined";
   playerId: string;
   name: string;
+  player: PlayerState;
 }
 
 export interface PlayerLeftMessage {
   type: "player_left";
   playerId: string;
+}
+
+export interface MatchCountdownMessage {
+  type: "match_countdown";
+  seconds: number;
+  snapshot: MatchSnapshot;
 }
 
 export interface MatchStartedMessage {

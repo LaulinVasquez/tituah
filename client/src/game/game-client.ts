@@ -1,7 +1,9 @@
 import {
   clonePlayerState,
   DEFAULT_STAGE,
+  SLOT_TO_AVATAR_FIELD,
   TICK_DT,
+  type InventoryItem,
   type ItemSlot,
   type PlayerState,
   type ServerMessage,
@@ -32,6 +34,7 @@ export class GameClient {
   private lastFrame = performance.now();
   private localTime = 0;
   private seekingMatch = false;
+  private lockerItems: InventoryItem[] = [];
 
   async start(canvas: HTMLCanvasElement): Promise<void> {
     this.input = new InputManager(canvas);
@@ -110,6 +113,9 @@ export class GameClient {
       this.state.snapshot = null;
       this.state.predicted = null;
       this.state.winnerId = null;
+      // #region agent log
+      fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'E',location:'game-client.ts:connect',message:'connect / play again',data:{socketConnected:this.socket.connected,leftoverFighters:this.renderer.debugFighters()},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (this.socket.connected) {
         void this.sendJoin();
         return;
@@ -216,6 +222,7 @@ export class GameClient {
       itemsRepository.listEnabled(),
       inventoryRepository.list(profile.uid),
     ]);
+    this.lockerItems = items;
     this.ui.showLocker(
       profile,
       items,
@@ -227,15 +234,37 @@ export class GameClient {
   }
 
   private async equip(itemId: string): Promise<void> {
-    await inventoryRepository.equip(itemId);
-    await authService.refreshProfile();
-    await this.openLocker();
+    const item = this.lockerItems.find((entry) => entry.id === itemId);
+    const previous = authService.profile?.avatar;
+    if (item && authService.profile) {
+      const field = SLOT_TO_AVATAR_FIELD[item.slot];
+      this.applyAvatar({ ...authService.profile.avatar, [field]: itemId });
+    }
+    try {
+      this.applyAvatar(await inventoryRepository.equip(itemId));
+    } catch (error) {
+      if (previous) this.applyAvatar(previous);
+      this.ui.setLockerError(messageOf(error));
+    }
   }
 
   private async unequip(slot: ItemSlot): Promise<void> {
-    await inventoryRepository.unequip(slot);
-    await authService.refreshProfile();
-    await this.openLocker();
+    const previous = authService.profile?.avatar;
+    if (authService.profile) {
+      const field = SLOT_TO_AVATAR_FIELD[slot];
+      this.applyAvatar({ ...authService.profile.avatar, [field]: null });
+    }
+    try {
+      this.applyAvatar(await inventoryRepository.unequip(slot));
+    } catch (error) {
+      if (previous) this.applyAvatar(previous);
+      this.ui.setLockerError(messageOf(error));
+    }
+  }
+
+  private applyAvatar(avatar: NonNullable<typeof authService.profile>["avatar"]): void {
+    authService.patchAvatar(avatar);
+    this.ui.applyAvatar(avatar);
   }
 
   private onServerMessage(message: ServerMessage): void {
@@ -253,13 +282,40 @@ export class GameClient {
     }
     if (message.type === "welcome") {
       if (!this.seekingMatch) return;
-      this.ui.showWaiting();
+      const slot = (message.player.spawnIndex % 2 === 0 ? 0 : 1) as 0 | 1;
+      const others = message.players.filter((player) => player.id !== message.playerId);
+      if (others.length > 0) {
+        void this.ui.showVersus(message.player, others[0], "p2-run");
+      } else {
+        this.ui.showWaiting(slot);
+      }
+    }
+    if (message.type === "player_joined") {
+      if (!this.seekingMatch) return;
+      const local = this.state.predicted;
+      if (!local) return;
+      void this.ui.showVersus(local, message.player, "p1-reveal");
+    }
+    if (message.type === "player_left") {
+      if (!this.seekingMatch) return;
+      const local = this.state.predicted;
+      if (!local) return;
+      this.ui.showWaiting((local.spawnIndex % 2 === 0 ? 0 : 1) as 0 | 1);
+    }
+    if (message.type === "match_countdown") {
+      if (!this.seekingMatch) return;
+      this.ui.showCountdown(message.seconds);
     }
     if (message.type === "match_started") {
       this.seekingMatch = false;
       this.renderer.setStage(message.snapshot.stageId);
       this.localTime = this.state.snapshot?.time ?? 0;
       this.accumulator = 0;
+      const leftoverFighters = this.renderer.debugFighters();
+      this.renderer.resetForMatch();
+      // #region agent log
+      fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'A',location:'game-client.ts:match_started',message:'match started',data:{localTime:this.localTime,snapshotTime:this.state.snapshot?.time ?? null,playerIds:(this.state.snapshot?.players ?? []).map((p)=>p.id),status:this.state.snapshot?.status ?? null,leftoverFighters,resetFighters:this.renderer.debugFighters()},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (this.state.localPlayerId && this.state.snapshot) {
         this.prediction.reset(this.state.snapshot, this.state.localPlayerId);
       }
@@ -270,6 +326,9 @@ export class GameClient {
       if (reconciled) this.state.predicted = reconciled;
     }
     if (message.type === "match_ended") {
+      // #region agent log
+      fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'A',location:'game-client.ts:match_ended',message:'match ended',data:{localTime:this.localTime,snapshotTime:this.state.snapshot?.time ?? null,winnerId:this.state.winnerId,playerIds:(this.state.snapshot?.players ?? []).map((p)=>p.id)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       for (const player of this.state.snapshot?.players ?? []) {
         if (player.id !== this.state.winnerId) {
           this.renderer.showVoidDeath(player.id, this.localTime);

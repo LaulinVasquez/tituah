@@ -33,4 +33,5 @@ export const SHEET_ACCESSORY_IDS = [
   SPRITE_ASSET_IDS.redBandana,
   SPRITE_ASSET_IDS.blueBandana,
   SPRITE_ASSET_IDS.topHat,
+  SPRITE_ASSET_IDS.sneakers,
 ] as const;

@@ -25,7 +25,21 @@
         <section id="lobby" class="panel lobby is-signed-out">
           <canvas id="lobby-fighter" class="lobby-fighter-canvas"></canvas>
           <div class="lobby-character" id="character-column">
-            <div class="character-stage" id="character-stage"></div>
+            <div class="character-stage-backdrop" id="character-stage-backdrop" aria-hidden="true"></div>
+            <div class="character-stage" id="character-stage">
+              <div id="countdown-banner" class="countdown-banner" hidden>3</div>
+            </div>
+            <div id="versus-cards" class="versus-cards" hidden>
+              <div class="versus-card" data-slot="0" data-state="empty">
+                <span class="versus-slot">Player 1</span>
+                <strong class="versus-name" id="versus-name-0">—</strong>
+              </div>
+              <div class="versus-vs">VS</div>
+              <div class="versus-card" data-slot="1" data-state="empty">
+                <span class="versus-slot">Player 2</span>
+                <strong class="versus-name" id="versus-name-1">—</strong>
+              </div>
+            </div>
             <div id="player-card" class="player-card is-locked">
               <div class="character-platform" id="character-platform"></div>
               <div id="player-card-locked" class="player-card-body">
@@ -36,6 +50,12 @@
               <div id="player-card-profile" class="player-card-body" hidden>
                 <p class="character-name" id="preview-name">Fighter</p>
                 <p class="player-stats" id="player-stats">Lv 1 · 0W 0L</p>
+              </div>
+              <div id="player-card-waiting" class="player-card-body" hidden>
+                <p class="eyebrow">Matchmaking</p>
+                <h3 id="platform-waiting-title">Waiting for opponent</h3>
+                <p id="platform-waiting-blurb" class="blurb">Hold your charge — an opponent will appear on the right.</p>
+                <button id="cancel-wait" class="ghost platform-cancel" type="button">Cancel</button>
               </div>
               <div id="player-card-moves" class="player-card-body" hidden>
                 <p class="eyebrow">Try a move</p>
@@ -107,9 +127,15 @@
             </div>
             <div id="pane-waiting" class="pane" hidden>
               <p class="eyebrow">Matchmaking</p>
-              <h2>Waiting for opponent</h2>
-              <p class="blurb">Open a second window with another account, or a guest in a private window.</p>
-              <button id="cancel-wait" class="ghost" type="button">Cancel</button>
+              <h2 id="waiting-title">Waiting for opponent</h2>
+              <p id="waiting-slot" class="slot-chip" data-slot="0">Joining as Player 1</p>
+              <div id="waiting-solo">
+                <p class="blurb">Open a second window with another account, or a guest in a private window.</p>
+              </div>
+              <div id="waiting-versus" hidden>
+                <p class="blurb">Match found — fighters ready. Countdown starting…</p>
+              </div>
+              <p id="waiting-countdown" class="countdown-readout" hidden></p>
             </div>
             <div id="pane-result" class="pane" hidden>
               <p class="eyebrow">Match over</p>
@@ -120,6 +146,10 @@
               <p class="eyebrow">Fighter</p>
               <h2>Edit</h2>
               <p class="blurb">Change your name and equip items. Use the platform under your fighter to preview moves.</p>
+              <div class="preview-slot-toggle" role="group" aria-label="Preview as player">
+                <button type="button" id="preview-slot-0" data-preview-slot="0" data-selected="true">View as Player 1</button>
+                <button type="button" id="preview-slot-1" data-preview-slot="1" data-selected="false">View as Player 2</button>
+              </div>
               <label>
                 Display name
                 <input id="display-name" maxlength="24" placeholder="Fighter" autocomplete="nickname" />

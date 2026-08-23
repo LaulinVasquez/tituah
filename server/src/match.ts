@@ -71,6 +71,8 @@ export class Match {
   tick = 0;
   time = 0;
   winnerId: string | null = null;
+  private countdownSeconds: number | null = null;
+  private countdownAccum = 0;
 
   private readonly inputs = new Map<string, PlayerInput>();
   private readonly previousInputs = new Map<string, PlayerInput>();
@@ -136,6 +138,11 @@ export class Match {
     this.inputs.delete(id);
     this.previousInputs.delete(id);
     delete this.scores[id];
+    this.combat.delete(id);
+    if (this.status === "countdown") {
+      this.cancelCountdown();
+      return;
+    }
     if (this.status === "playing") {
       this.endMatch(this.livingPlayers()[0]?.id ?? null);
     }
@@ -157,8 +164,32 @@ export class Match {
     this.pendingAttackReleases.add(playerId);
   }
 
+  beginCountdown(): void {
+    if (this.status !== "waiting" || this.players.size < 2) return;
+    this.status = "countdown";
+    this.countdownSeconds = 3;
+    this.countdownAccum = 0;
+    this.resetPlayersToSpawns();
+    const snapshot = this.createSnapshot();
+    this.emit(null, {
+      type: "match_countdown",
+      seconds: 3,
+      snapshot: cloneSnapshot(snapshot),
+    });
+  }
+
+  cancelCountdown(): void {
+    this.countdownSeconds = null;
+    this.countdownAccum = 0;
+    if (this.status === "countdown") {
+      this.status = "waiting";
+    }
+  }
+
   start(): void {
-    if (this.status !== "waiting") return;
+    if (this.status !== "waiting" && this.status !== "countdown") return;
+    this.countdownSeconds = null;
+    this.countdownAccum = 0;
     this.status = "playing";
     this.tick = 0;
     this.time = 0;
@@ -175,6 +206,10 @@ export class Match {
   }
 
   update(dt = TICK_DT): void {
+    if (this.status === "countdown") {
+      this.updateCountdown(dt);
+      return;
+    }
     if (this.status !== "playing") return;
 
     this.tick += 1;
@@ -255,6 +290,25 @@ export class Match {
     for (const hit of resolved.hits) {
       this.recordDamage(hit.attackerId, hit.targetId, hit.damage);
       this.emit(null, { type: "player_hit", ...hit });
+    }
+  }
+
+
+  private updateCountdown(dt: number): void {
+    if (this.countdownSeconds == null) return;
+    this.countdownAccum += dt;
+    while (this.countdownAccum >= 1 && this.countdownSeconds != null) {
+      this.countdownAccum -= 1;
+      this.countdownSeconds -= 1;
+      if (this.countdownSeconds <= 0) {
+        this.start();
+        return;
+      }
+      this.emit(null, {
+        type: "match_countdown",
+        seconds: this.countdownSeconds,
+        snapshot: cloneSnapshot(this.createSnapshot()),
+      });
     }
   }
 

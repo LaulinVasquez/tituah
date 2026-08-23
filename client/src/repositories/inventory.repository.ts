@@ -1,5 +1,5 @@
 import { collection, getDocs } from "firebase/firestore";
-import type { UserInventoryItem } from "@tituah/shared";
+import type { AvatarConfiguration, UserInventoryItem } from "@tituah/shared";
 import { apiRequest } from "../services/api.js";
 import { clientDb } from "../services/firebase/firebaseClient.js";
 
@@ -9,18 +9,20 @@ export class InventoryRepository {
     return snap.docs.map((item) => item.data() as UserInventoryItem);
   }
 
-  async equip(itemId: string): Promise<void> {
-    await apiRequest("/api/avatar/equip", {
+  async equip(itemId: string): Promise<AvatarConfiguration> {
+    const { avatar } = await apiRequest<{ avatar: AvatarConfiguration }>("/api/avatar/equip", {
       method: "POST",
       body: JSON.stringify({ itemId }),
     });
+    return avatar;
   }
 
-  async unequip(slot: string): Promise<void> {
-    await apiRequest("/api/avatar/unequip", {
+  async unequip(slot: string): Promise<AvatarConfiguration> {
+    const { avatar } = await apiRequest<{ avatar: AvatarConfiguration }>("/api/avatar/unequip", {
       method: "POST",
       body: JSON.stringify({ slot }),
     });
+    return avatar;
   }
 }
 

@@ -49,6 +49,18 @@ export class PlayerRenderer {
     probe.destroy();
   }
 
+  debugFighters(): ReturnType<FighterSprite["debugState"]>[] {
+    return [...this.fighters.values()].map((fighter) => fighter.debugState());
+  }
+
+  resetForMatch(): void {
+    for (const fighter of this.fighters.values()) {
+      fighter.resetForMatch();
+    }
+    this.impacts.length = 0;
+    this.voidDeaths.length = 0;
+  }
+
   showHit(hit: PlayerHitMessage, time: number): void {
     const attacker = this.lastPlayers.get(hit.attackerId);
     const target = this.lastPlayers.get(hit.targetId);
@@ -92,12 +104,18 @@ export class PlayerRenderer {
       this.lastPlayers.set(player.id, player);
       seen.add(player.id);
       let fighter = this.fighters.get(player.id);
+      const reused = Boolean(fighter);
       if (!fighter) {
         fighter = new FighterSprite(player.id);
         void fighter.load();
         this.fighterLayer.addChild(fighter);
         this.fighters.set(player.id, fighter);
       }
+      // #region agent log
+      if (!reused || fighter.visible === false) {
+        fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:reused?'A':'C',location:'player-renderer.ts:draw',message:reused?'reusing fighter sprite':'created fighter sprite',data:{playerId:player.id,reused,destroyed:fighter.destroyed,visible:fighter.visible,childCount:fighter.children.length,time,lives:player.lives},timestamp:Date.now()})}).catch(()=>{});
+      }
+      // #endregion
       fighter.update(player, time);
 
       if (player.lives > 0) {
@@ -116,6 +134,9 @@ export class PlayerRenderer {
     }
     for (const [id, fighter] of this.fighters) {
       if (!seen.has(id)) {
+        // #region agent log
+        fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'D',location:'player-renderer.ts:destroy',message:'destroying unused fighter',data:{playerId:id,time},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         fighter.destroy();
         this.fighters.delete(id);
       }

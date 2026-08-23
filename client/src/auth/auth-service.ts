@@ -81,6 +81,11 @@ export class AuthService {
     return this.profile;
   }
 
+  patchAvatar(avatar: UserProfile["avatar"]): void {
+    if (!this.profile) return;
+    this.profile = { ...this.profile, avatar: { ...avatar } };
+  }
+
   private emit(): void {
     for (const listener of this.listeners) listener();
   }

@@ -267,6 +267,31 @@ button.ghost {
   overflow: hidden;
 }
 
+.character-stage-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: #0d1320;
+  background-image: var(--stage-backdrop, none);
+  background-size: cover;
+  background-position: center;
+  filter: blur(3px) saturate(1.05);
+  opacity: 0.62;
+  transform: scale(1.04);
+  transition: opacity 0.28s ease, filter 0.28s ease;
+}
+
+.lobby-character > :not(.character-stage-backdrop) {
+  position: relative;
+  z-index: 1;
+}
+
+.lobby.is-signed-out .character-stage-backdrop {
+  opacity: 0.34;
+  filter: blur(4px) grayscale(0.2) saturate(0.85);
+}
+
 .lobby.is-signed-out .lobby-character {
   background:
     radial-gradient(circle at 50% 18%, rgba(147, 160, 181, 0.1), transparent 46%),
@@ -279,6 +304,7 @@ button.ghost {
 }
 
 .character-stage {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -726,5 +752,174 @@ html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {
   .shatter-shard,
   .lobby.is-loading .character-platform {
     animation: none;
+  }
+}
+
+.lobby.is-versus {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.lobby.is-versus .lobby-character {
+  min-height: min(420px, 70dvh);
+}
+
+.lobby.is-versus .lobby-options {
+  display: none !important;
+}
+
+.lobby.is-seeking .character-platform {
+  animation: charge-pulse 0.7s ease-in-out infinite;
+}
+
+.slot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.slot-chip[data-slot="0"] {
+  color: #ff9a5c;
+  border-color: rgba(255, 154, 92, 0.55);
+  background: rgba(255, 122, 69, 0.12);
+}
+
+.slot-chip[data-slot="1"] {
+  color: #7eb6ff;
+  border-color: rgba(126, 182, 255, 0.55);
+  background: rgba(91, 157, 255, 0.14);
+}
+
+.player-card.is-waiting {
+  border-top-color: #ff7a45;
+  text-align: center;
+}
+
+.player-card.is-waiting .platform-cancel {
+  margin-top: 14px;
+  width: 100%;
+}
+
+.versus-cards[hidden] {
+  display: none !important;
+}
+
+.versus-cards {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  margin: 8px 0 4px;
+}
+
+.versus-card {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-top-width: 3px;
+  border-radius: 10px;
+  background: #111827;
+}
+
+.versus-card[data-slot="0"] {
+  border-top-color: #ff7a45;
+}
+
+.versus-card[data-slot="1"] {
+  border-top-color: #5b9dff;
+  text-align: right;
+}
+
+.versus-card[data-state="waiting"],
+.versus-card[data-state="pending"] {
+  opacity: 0.72;
+}
+
+.versus-card[data-state="waiting"] .versus-name,
+.versus-card[data-state="pending"] .versus-name {
+  color: var(--muted);
+  font-weight: 600;
+  font-style: italic;
+}
+
+.versus-slot {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.versus-name {
+  font-size: 14px;
+}
+
+.versus-vs {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.countdown-banner {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  z-index: 4;
+  transform: translateX(-50%);
+  min-width: 72px;
+  padding: 10px 18px;
+  border-radius: 16px;
+  background: rgba(7, 10, 18, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 42px;
+  font-weight: 800;
+  text-align: center;
+  pointer-events: none;
+}
+
+.countdown-readout {
+  margin: 8px 0 0;
+  color: var(--accent);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.preview-slot-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.preview-slot-toggle button {
+  padding: 10px 8px;
+  background: #243049;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.preview-slot-toggle button[data-selected="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.preview-slot-toggle button[data-preview-slot="1"][data-selected="true"] {
+  outline-color: #5b9dff;
+}
+
+@media (max-width: 720px) {
+  .lobby.is-versus .lobby-character {
+    min-height: min(360px, 58dvh);
   }
 }

@@ -70,6 +70,14 @@ export class GameRenderer {
     this.players.showVoidDeath(playerId, time);
   }
 
+  debugFighters(): ReturnType<PlayerRenderer["debugFighters"]> {
+    return this.players.debugFighters();
+  }
+
+  resetForMatch(): void {
+    this.players.resetForMatch();
+  }
+
   render(players: PlayerState[], time: number): void {
     this.stage.update(players, time);
     this.updateCamera(players);

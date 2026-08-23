@@ -5,7 +5,7 @@ export type Facing = 1 | -1;
 
 export type AttackType = "melee" | "projectile" | "hitscan" | "throwable";
 
-export type MatchStatus = "waiting" | "playing" | "ended";
+export type MatchStatus = "waiting" | "countdown" | "playing" | "ended";
 
 export type AttackState =
   | { type: "idle" }

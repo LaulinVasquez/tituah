@@ -13,6 +13,8 @@ export interface AccessorySprite {
   frame: FighterFrame;
   anchorX: number;
   anchorY: number;
+  url?: string;
+  visualHeight?: number;
 }
 
 export interface FighterAppearance {
@@ -32,47 +34,62 @@ const COLOR_HUES: Record<FighterColor, number | null> = {
 const ACCESSORIES: Record<string, AccessorySprite> = {
   [SPRITE_ASSET_IDS.sunglasses]: {
     id: SPRITE_ASSET_IDS.sunglasses,
-    frame: { x: 24, y: 868, width: 92, height: 36 },
+    frame: { x: 0, y: 0, width: 998, height: 338 },
     anchorX: 0,
-    anchorY: -72,
+    anchorY: -60,
+    url: "/assets/characters/sunglasses.png",
+    visualHeight: 26,
   },
   [SPRITE_ASSET_IDS.crown]: {
     id: SPRITE_ASSET_IDS.crown,
-    frame: { x: 132, y: 848, width: 88, height: 56 },
+    frame: { x: 888, y: 903, width: 81, height: 69 },
     anchorX: 0,
-    anchorY: -98,
+    anchorY: -88,
   },
   [SPRITE_ASSET_IDS.redBandana]: {
     id: SPRITE_ASSET_IDS.redBandana,
-    frame: { x: 236, y: 858, width: 96, height: 46 },
+    frame: { x: 979, y: 910, width: 112, height: 50 },
     anchorX: 0,
-    anchorY: -90,
+    anchorY: -80,
   },
   [SPRITE_ASSET_IDS.basicCap]: {
     id: SPRITE_ASSET_IDS.basicCap,
-    frame: { x: 348, y: 848, width: 102, height: 58 },
-    anchorX: 0,
-    anchorY: -96,
+    frame: { x: 1096, y: 900, width: 106, height: 70 },
+    anchorX: 2,
+    anchorY: -86,
   },
   [SPRITE_ASSET_IDS.blueBandana]: {
     id: SPRITE_ASSET_IDS.blueBandana,
-    frame: { x: 466, y: 858, width: 96, height: 46 },
+    frame: { x: 1208, y: 909, width: 110, height: 50 },
     anchorX: 0,
-    anchorY: -90,
+    anchorY: -80,
   },
   [SPRITE_ASSET_IDS.topHat]: {
     id: SPRITE_ASSET_IDS.topHat,
-    frame: { x: 578, y: 832, width: 84, height: 74 },
+    frame: { x: 1331, y: 900, width: 98, height: 75 },
     anchorX: 0,
-    anchorY: -104,
+    anchorY: -96,
   },
   [SPRITE_ASSET_IDS.goldChain]: {
     id: SPRITE_ASSET_IDS.goldChain,
-    frame: { x: 678, y: 862, width: 86, height: 48 },
+    frame: { x: 1437, y: 900, width: 73, height: 74 },
     anchorX: 0,
-    anchorY: -44,
+    anchorY: -46,
+  },
+  // Cropped from the idle pose sneakers (no standalone shoe strip on the sheet).
+  [SPRITE_ASSET_IDS.sneakers]: {
+    id: SPRITE_ASSET_IDS.sneakers,
+    frame: { x: 35, y: 140, width: 95, height: 35 },
+    anchorX: 0,
+    anchorY: -2,
   },
 };
+
+export function extraAccessorySources(): Array<{ id: string; url: string }> {
+  return Object.values(ACCESSORIES).flatMap((item) =>
+    item.url ? [{ id: item.id, url: item.url }] : [],
+  );
+}
 
 export function appearanceKey(avatar: AvatarConfiguration | undefined, spawnIndex: number): string {
   if (!avatar) return `|${spawnIndex}`;

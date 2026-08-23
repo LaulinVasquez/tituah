@@ -56,12 +56,14 @@ export class MatchManager {
     session.matchId = match.id;
     this.sessionsByPlayer.set(player.id, session);
 
+    const roster = [...match.players.values()];
     session.socket.send(
       JSON.stringify({
         type: "welcome",
         playerId: player.id,
         matchId: match.id,
         player,
+        players: roster,
       } satisfies ServerMessage),
     );
 
@@ -69,11 +71,12 @@ export class MatchManager {
       type: "player_joined",
       playerId: player.id,
       name: player.name,
+      player,
     });
 
     if (match.playerCount >= PLAYERS_PER_MATCH) {
       this.waiting = null;
-      match.start();
+      match.beginCountdown();
     }
 
     return match;
@@ -91,11 +94,11 @@ export class MatchManager {
       playerId: session.playerId,
     });
 
-    if (this.waiting === match) {
-      this.waiting = null;
-    }
     if (match.playerCount === 0) {
+      if (this.waiting === match) this.waiting = null;
       this.matches.delete(match.id);
+    } else if (match.status === "waiting") {
+      this.waiting = match;
     }
     session.playerId = null;
     session.matchId = null;
