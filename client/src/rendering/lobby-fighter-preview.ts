@@ -7,6 +7,7 @@ import {
 } from "@tituah/shared";
 import { FIGHTER_VISUAL_HEIGHT } from "./sprites/fighter-atlas.js";
 import { FighterSprite } from "./sprites/fighter-sprite.js";
+import { pixiOptions } from "./renderer-options.js";
 
 const CHARGE_MS = 180;
 const ATTACK_MS = 240;
@@ -37,15 +38,14 @@ export class LobbyFighterPreview {
   async start(): Promise<void> {
     const width = Math.max(2, this.lobby.clientWidth);
     const height = Math.max(2, this.lobby.clientHeight);
-    await this.app.init({
-      canvas: this.canvas,
+    await this.app.init(pixiOptions(this.canvas, {
       width,
       height,
       backgroundAlpha: 0,
-      antialias: true,
-      resolution: Math.min(window.devicePixelRatio, 2),
-      autoDensity: true,
-    });
+      autoStart: true,
+    }));
+    this.app.stage.eventMode = "none";
+    this.app.stage.interactiveChildren = false;
     await this.fighter.load();
     this.app.stage.addChild(this.fighter);
     this.ready = true;
@@ -73,6 +73,7 @@ export class LobbyFighterPreview {
   setActive(active: boolean): void {
     this.app.ticker[active ? "start" : "stop"]();
     this.canvas.hidden = !active;
+    if (!active) this.app.render();
     if (active) this.layout();
   }
 

@@ -63,6 +63,13 @@ export class Ui {
   private profile: UserProfile | null = null;
   private fighter?: LobbyFighterPreview;
   private selectedStage: StageId = "barnyard";
+  private hudKey = "";
+  private readonly hudSlots = [...this.hud.querySelectorAll<HTMLElement>(".fighter")].map((slot) => ({
+    index: Number(slot.dataset.slot),
+    name: slot.querySelector(".name"),
+    lives: slot.querySelector(".lives"),
+    percent: slot.querySelector(".percent"),
+  }));
 
   get currentPane(): LobbyPane {
     return this.pane;
@@ -254,15 +261,19 @@ export class Ui {
   }
 
   updateHud(state: GameState): void {
+    if (this.hud.hidden) return;
     const players = [...(state.snapshot?.players ?? [])].sort(
       (a, b) => a.spawnIndex - b.spawnIndex,
     );
-    for (const slot of this.hud.querySelectorAll<HTMLElement>(".fighter")) {
-      const index = Number(slot.dataset.slot);
-      const player = players[index];
-      const name = slot.querySelector(".name");
-      const lives = slot.querySelector(".lives");
-      const percent = slot.querySelector(".percent");
+    const key = players
+      .map((player) => `${player.id}:${player.name}:${player.lives}:${Math.round(player.damagePercent)}`)
+      .join("|");
+    if (key === this.hudKey) return;
+    this.hudKey = key;
+
+    for (const slot of this.hudSlots) {
+      const player = players[slot.index];
+      const { name, lives, percent } = slot;
       if (!name || !lives || !percent) continue;
       if (!player) {
         name.textContent = "—";
@@ -273,7 +284,7 @@ export class Ui {
       name.textContent = player.name;
       lives.textContent = "❤".repeat(Math.max(0, player.lives));
       percent.textContent = `${Math.round(player.damagePercent)}%`;
-      percent.setAttribute("style", `color:${index === 0 ? "var(--p1)" : "var(--p2)"}`);
+      percent.setAttribute("style", `color:${slot.index === 0 ? "var(--p1)" : "var(--p2)"}`);
     }
   }
 

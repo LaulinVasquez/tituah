@@ -74,6 +74,11 @@ const ACCESSORIES: Record<string, AccessorySprite> = {
   },
 };
 
+export function appearanceKey(avatar: AvatarConfiguration | undefined, spawnIndex: number): string {
+  if (!avatar) return `|${spawnIndex}`;
+  return `${avatar.baseAvatarId}|${spawnIndex}|${avatar.headAccessoryId}|${avatar.faceAccessoryId}|${avatar.bodyAccessoryId}|${avatar.waistAccessoryId}|${avatar.backAccessoryId}|${avatar.leftHandAccessoryId}|${avatar.rightHandAccessoryId}|${avatar.feetAccessoryId}|${avatar.effectAccessoryId}`;
+}
+
 export function appearanceFromAvatar(
   avatar: AvatarConfiguration | undefined,
   spawnIndex: number,

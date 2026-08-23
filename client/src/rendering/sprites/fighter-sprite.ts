@@ -1,6 +1,6 @@
 import { Assets, ColorMatrixFilter, Container, Rectangle, Sprite, Texture } from "pixi.js";
 import type { PlayerState } from "@tituah/shared";
-import { appearanceFromAvatar, colorHue, type AccessorySprite } from "./appearance.js";
+import { appearanceFromAvatar, appearanceKey, colorHue, type AccessorySprite, type FighterAppearance } from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
@@ -54,11 +54,18 @@ export class FighterSprite extends Container {
   private koUntil = 0;
   private hiddenUntil = 0;
   private colorKey = "";
+  private appearanceCacheKey = "";
+  private appearance: FighterAppearance | null = null;
+  private lastFacing: 1 | -1 | 0 = 0;
+  private lastFrameIndex = -1;
+  private lastFrameAnimation: FighterAnimation | null = null;
 
   constructor(readonly playerId: string) {
     super();
     this.addChild(this.sprite, this.accessoryLayer);
     this.sprite.anchor.set(0.5, 1);
+    this.eventMode = "none";
+    this.interactiveChildren = false;
   }
 
   async load(): Promise<void> {
@@ -92,18 +99,16 @@ export class FighterSprite extends Container {
     }
     const next = this.chooseAnimation(player, time);
     this.setAnimation(next, time);
-    this.setFrame(time);
+    const frameIndex = this.frameIndex(time);
+    this.setFrame(frameIndex);
 
     const definition = FIGHTER_ANIMATIONS[this.animation];
-    const frameIndex = this.frameIndex(time);
     const frame = definition.frames[frameIndex] ?? definition.frames[0];
     const scale = FIGHTER_VISUAL_HEIGHT / frame.height;
 
     this.sprite.scale.set(scale * player.facing, scale);
     this.sprite.position.set((frame.offsetX ?? 0) * scale * player.facing, frame.offsetY ?? 0);
-    const appearance = appearanceFromAvatar(player.avatar, player.spawnIndex);
-    this.setColorVariant(appearance.color);
-    this.syncAccessories(appearance.accessories, player.facing);
+    this.syncAppearance(player);
     this.applyHitMotion(time);
     this.zIndex = player.position.y
       + (player.attackState.type === "active" ? 1_000 : 0)
@@ -132,6 +137,7 @@ export class FighterSprite extends Container {
     if (!restart && animation === this.animation) return;
     this.animation = animation;
     this.animationStartedAt = time;
+    this.lastFrameIndex = -1;
   }
 
   private frameIndex(time: number): number {
@@ -142,8 +148,27 @@ export class FighterSprite extends Container {
       : Math.min(elapsedFrames, definition.frames.length - 1);
   }
 
-  private setFrame(time: number): void {
-    this.sprite.texture = this.textures[this.animation][this.frameIndex(time)];
+  private setFrame(index: number): void {
+    if (index === this.lastFrameIndex && this.animation === this.lastFrameAnimation) return;
+    this.lastFrameIndex = index;
+    this.lastFrameAnimation = this.animation;
+    this.sprite.texture = this.textures[this.animation][index];
+  }
+
+  private syncAppearance(player: PlayerState): void {
+    const key = appearanceKey(player.avatar, player.spawnIndex);
+    if (key !== this.appearanceCacheKey || !this.appearance) {
+      this.appearanceCacheKey = key;
+      this.appearance = appearanceFromAvatar(player.avatar, player.spawnIndex);
+      this.setColorVariant(this.appearance.color);
+      this.syncAccessories(this.appearance.accessories, player.facing);
+      this.lastFacing = player.facing;
+      return;
+    }
+    if (this.lastFacing !== player.facing) {
+      this.lastFacing = player.facing;
+      this.syncAccessories(this.appearance.accessories, player.facing);
+    }
   }
 
   private setColorVariant(color: ReturnType<typeof appearanceFromAvatar>["color"]): void {
@@ -151,7 +176,7 @@ export class FighterSprite extends Container {
     this.colorKey = color;
     const hue = colorHue(color);
     if (hue == null) {
-      this.sprite.filters = [];
+      this.sprite.filters = null;
       return;
     }
     const filter = new ColorMatrixFilter();
@@ -194,7 +219,7 @@ export class FighterSprite extends Container {
 
   private applyHitMotion(time: number): void {
     if (time >= this.hitUntil) {
-      this.rotation = 0;
+      if (this.rotation !== 0) this.rotation = 0;
       return;
     }
     const progress = Math.min(1, Math.max(0, (time - this.hitStartedAt) / HIT_DURATION));

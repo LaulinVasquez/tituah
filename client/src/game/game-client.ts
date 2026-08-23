@@ -283,14 +283,18 @@ export class GameClient {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
-    this.accumulator += dt;
 
-    while (this.accumulator >= TICK_DT) {
-      this.step();
-      this.accumulator -= TICK_DT;
+    if (!document.hidden && this.state.playing()) {
+      this.accumulator += dt;
+      while (this.accumulator >= TICK_DT) {
+        this.step();
+        this.accumulator -= TICK_DT;
+      }
+      this.draw();
+    } else {
+      this.accumulator = 0;
     }
 
-    this.draw();
     requestAnimationFrame(this.loop);
   };
 
