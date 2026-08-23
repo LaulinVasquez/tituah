@@ -40,12 +40,16 @@ export class MatchManager {
 
     session.uid = profile.uid;
     session.name = profile.displayName;
-    session.playerId = profile.uid;
 
     const existing = this.sessionsByPlayer.get(profile.uid);
     if (existing && existing !== session) {
       this.leave(existing);
     }
+    if (session.matchId) {
+      this.leave(session);
+    }
+
+    session.playerId = profile.uid;
 
     const match = this.getOrCreateWaitingMatch(requestedStageId);
     const player = match.addPlayer(profile.uid, profile.displayName, profile.avatar);

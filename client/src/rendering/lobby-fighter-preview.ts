@@ -64,6 +64,9 @@ export class LobbyFighterPreview {
     });
     this.resizeObserver = new ResizeObserver(() => this.layout());
     this.resizeObserver.observe(this.lobby);
+    this.resizeObserver.observe(this.stage);
+    this.resizeObserver.observe(this.platform);
+    window.visualViewport?.addEventListener("resize", () => this.layout());
   }
 
   setAvatar(avatar: AvatarConfiguration | null): void {
@@ -135,10 +138,12 @@ export class LobbyFighterPreview {
     this.canvas.style.height = `${height}px`;
     this.app.renderer.resize(width, height);
 
-    const available = Math.max(110, platform.top - stage.top - 8);
+    const stageTop = Math.max(stage.top, lobby.top);
+    const feetY = Math.min(platform.top, lobby.bottom - 8);
+    const available = Math.max(64, feetY - stageTop - 8);
     this.scale = PREVIEW_SCALE * (available / FIGHTER_VISUAL_HEIGHT);
     this.player.position.x = stage.left + stage.width / 2 - lobby.left;
-    this.player.position.y = platform.top - lobby.top;
+    this.player.position.y = feetY - lobby.top;
   }
 
   private resetBody(): void {

@@ -5,9 +5,9 @@ export interface SampledInput {
   attackEdge: "start" | "release" | null;
 }
 
-type VirtualAction = "left" | "right" | "down" | "jump" | "attack";
+type VirtualAction = "left" | "right" | "down" | "up" | "jump" | "attack";
 
-const VIRTUAL_ACTIONS = new Set<VirtualAction>(["left", "right", "down", "jump", "attack"]);
+const VIRTUAL_ACTIONS = new Set<VirtualAction>(["left", "right", "down", "up", "jump", "attack"]);
 
 export class InputManager {
   private sequence = 0;
@@ -57,7 +57,12 @@ export class InputManager {
         left: this.keys.has("a") || this.keys.has("arrowleft") || this.virtual.has("left"),
         right: this.keys.has("d") || this.keys.has("arrowright") || this.virtual.has("right"),
         down: this.keys.has("s") || this.keys.has("arrowdown") || this.virtual.has("down"),
-        jump: this.keys.has(" ") || this.keys.has("w") || this.keys.has("arrowup") || this.virtual.has("jump"),
+        jump:
+          this.keys.has(" ") ||
+          this.keys.has("w") ||
+          this.keys.has("arrowup") ||
+          this.virtual.has("jump") ||
+          this.virtual.has("up"),
         attackHeld,
         aimAngle: this.aimAngle,
       },
@@ -71,7 +76,12 @@ export class InputManager {
       left: this.keys.has("a") || this.keys.has("arrowleft") || this.virtual.has("left"),
       right: this.keys.has("d") || this.keys.has("arrowright") || this.virtual.has("right"),
       down: this.keys.has("s") || this.keys.has("arrowdown") || this.virtual.has("down"),
-      jump: this.keys.has(" ") || this.keys.has("w") || this.keys.has("arrowup") || this.virtual.has("jump"),
+      jump:
+        this.keys.has(" ") ||
+        this.keys.has("w") ||
+        this.keys.has("arrowup") ||
+        this.virtual.has("jump") ||
+        this.virtual.has("up"),
       attackHeld:
         this.pointerDown ||
         this.virtual.has("attack") ||

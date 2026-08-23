@@ -110,6 +110,10 @@ export class GameClient {
       this.state.snapshot = null;
       this.state.predicted = null;
       this.state.winnerId = null;
+      if (this.socket.connected) {
+        void this.sendJoin();
+        return;
+      }
       this.socket.connect();
     } catch (error) {
       this.seekingMatch = false;
