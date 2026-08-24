@@ -1,14 +1,8 @@
 import type { ClientMessage, ServerMessage } from "@tituah/shared";
 import { parseServerMessage } from "@tituah/shared";
+import { socketUrl } from "../config/runtime.js";
 
-function defaultSocketUrl(): string {
-  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
-  if (import.meta.env.DEV) return "ws://localhost:8080/ws";
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/ws`;
-}
-
-const DEFAULT_URL = defaultSocketUrl();
+const DEFAULT_URL = socketUrl();
 
 export class GameSocket {
   private socket: WebSocket | null = null;

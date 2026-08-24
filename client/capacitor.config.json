@@ -1,0 +1,8 @@
+{
+  "appId": "click.samirrodriguez.tituah",
+  "appName": "Tituah",
+  "webDir": "dist",
+  "server": {
+    "iosScheme": "capacitor"
+  }
+}

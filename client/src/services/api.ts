@@ -1,12 +1,7 @@
 import { clientAuth } from "./firebase/firebaseClient.js";
+import { apiBaseUrl } from "../config/runtime.js";
 
 const REQUEST_TIMEOUT_MS = 12_000;
-
-function apiBase(): string {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-  if (import.meta.env.DEV) return "http://localhost:8080";
-  return "";
-}
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const user = clientAuth().currentUser;
@@ -15,7 +10,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${apiBase()}${path}`, {
+    const response = await fetch(`${apiBaseUrl()}${path}`, {
       ...init,
       signal: controller.signal,
       headers: {

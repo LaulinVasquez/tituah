@@ -7,14 +7,20 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "npm run build && cap sync",
+    "cap:open:ios": "cap open ios",
+    "ios": "npm run cap:sync && npm run cap:open:ios"
   },
   "dependencies": {
+    "@capacitor/core": "^7.4.3",
     "@tituah/shared": "*",
     "firebase": "^12.18.0",
     "pixi.js": "^8.9.2"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
+    "@capacitor/ios": "^7.4.3",
     "typescript": "^5.8.2",
     "vite": "^6.2.2"
   }

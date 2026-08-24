@@ -122,9 +122,6 @@ export class GameClient {
       this.state.snapshot = null;
       this.state.predicted = null;
       this.state.winnerId = null;
-      // #region agent log
-      fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'E',location:'game-client.ts:connect',message:'connect / play again',data:{socketConnected:this.socket.connected,leftoverFighters:this.renderer.debugFighters()},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (this.socket.connected) {
         void this.sendJoin();
         return;
@@ -316,11 +313,7 @@ export class GameClient {
       this.renderer.setStage(message.snapshot.stageId);
       this.localTime = this.state.snapshot?.time ?? 0;
       this.accumulator = 0;
-      const leftoverFighters = this.renderer.debugFighters();
       this.renderer.resetForMatch();
-      // #region agent log
-      fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'A',location:'game-client.ts:match_started',message:'match started',data:{localTime:this.localTime,snapshotTime:this.state.snapshot?.time ?? null,playerIds:(this.state.snapshot?.players ?? []).map((p)=>p.id),status:this.state.snapshot?.status ?? null,leftoverFighters,resetFighters:this.renderer.debugFighters()},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (this.state.localPlayerId && this.state.snapshot) {
         this.prediction.reset(this.state.snapshot, this.state.localPlayerId);
       }
@@ -332,9 +325,6 @@ export class GameClient {
     }
     if (message.type === "match_ended") {
       this.input.reset();
-      // #region agent log
-      fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'A',location:'game-client.ts:match_ended',message:'match ended',data:{localTime:this.localTime,snapshotTime:this.state.snapshot?.time ?? null,winnerId:this.state.winnerId,playerIds:(this.state.snapshot?.players ?? []).map((p)=>p.id)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       sfx.ko();
       audio.stop("run");
       this.inRoom = true;

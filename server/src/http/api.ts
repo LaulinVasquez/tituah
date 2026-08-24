@@ -15,8 +15,10 @@ import {
 import { verifyIdToken } from "../services/firebase/firebaseAdmin.js";
 
 const CORS_ORIGINS = new Set([
+  "capacitor://localhost",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+  "ionic://localhost",
   "https://staging.tituah.samirrodriguez.click",
 ]);
 
@@ -158,7 +160,7 @@ function isAllowedOrigin(origin: string): boolean {
     const { hostname, protocol } = new URL(origin);
     return (
       (hostname === "localhost" || hostname === "127.0.0.1") &&
-      (protocol === "http:" || protocol === "https:")
+      (protocol === "http:" || protocol === "https:" || protocol === "capacitor:" || protocol === "ionic:")
     );
   } catch {
     return false;
