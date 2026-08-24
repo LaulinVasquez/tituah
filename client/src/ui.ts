@@ -16,6 +16,7 @@ import {
   type LobbyDemoMove,
 } from "./rendering/lobby-fighter-preview.js";
 import { STAGE_VISUALS } from "./rendering/stages/stage-config.js";
+import { audio } from "./audio/audio-manager.js";
 import { shatterElement } from "./shatter-pane.js";
 
 type LobbyPane = "landing" | "login" | "menu" | "waiting" | "result" | "edit";
@@ -56,6 +57,9 @@ export class Ui {
   readonly menuError = required("#menu-error");
   readonly editError = required("#edit-error");
   readonly resultTitle = required("#result-title");
+  readonly muteButton = required("#audio-mute", HTMLButtonElement);
+  readonly hudAudioButton = required("#hud-audio", HTMLButtonElement);
+  readonly mixer = required("#audio-mixer");
   readonly stageButtons = document.querySelectorAll<HTMLButtonElement>("[data-stage]");
 
   private pane: LobbyPane = "landing";
@@ -72,6 +76,8 @@ export class Ui {
   private fighter?: LobbyFighterPreview;
   private selectedStage: StageId = "barnyard";
   private hudKey = "";
+  private mixerOpen = false;
+  private mixerAnchor: HTMLButtonElement | null = null;
   private readonly hudSlots = [...this.hud.querySelectorAll<HTMLElement>(".fighter")].map((slot) => ({
     index: Number(slot.dataset.slot),
     name: slot.querySelector(".name"),
@@ -118,19 +124,35 @@ export class Ui {
       if (event.key === "Enter") this.saveAvatarButton.click();
     });
     this.selectStage(this.selectedStage);
+    this.bindMixer();
     required("#lobby").addEventListener(
       "click",
       (event) => {
         const button = (event.target as HTMLElement | null)?.closest("button");
         if (!button || button.disabled || this.loading) return;
+        if (button.id === "audio-mute" || button.closest("#audio-mixer")) return;
         if (button.dataset.slapReplay === "true") return;
-        // Preview-slot: tint only + in-place slap (handled below) — never shatter or flip facing.
+        // Auth buttons use their own listeners (slap + sign-in in authenticate).
+        if (
+          button.id === "choose-guest"
+          || button.id === "sign-in"
+          || button.id === "sign-up"
+        ) {
+          return;
+        }
+        // Preview-slot toggles handle their own in-place slap.
         if (button.dataset.previewSlot != null) return;
         const demo = button.dataset.demoMove;
         if (demo && isDemoMove(demo)) {
           event.preventDefault();
           event.stopImmediatePropagation();
+          if (this.slapping) return;
           this.setActiveMove(demo);
+          // Slap the option itself — same directed slap as other lobby controls.
+          if (demo === "slap") {
+            void this.slapThen(button, () => undefined, false);
+            return;
+          }
           this.fighter?.playMove(demo);
           return;
         }
@@ -142,8 +164,14 @@ export class Ui {
           button.click();
           delete button.dataset.slapReplay;
         };
-        // Stage / attire: slap toward the control, keep the panel open (no shatter).
-        if (button.dataset.stage || button.classList.contains("item-card")) {
+        // Stay in lobby: slap, no shatter (stage / attire / edit chrome).
+        if (
+          button.dataset.stage
+          || button.classList.contains("item-card")
+          || button.id === "save-avatar"
+          || button.id === "back-edit"
+          || button.id === "edit-avatar"
+        ) {
           void this.slapThen(button, replay, false);
           return;
         }
@@ -159,6 +187,7 @@ export class Ui {
   }
 
   async startFighterPreview(): Promise<void> {
+    void audio.load();
     const canvas = required("#lobby-fighter");
     if (!(canvas instanceof HTMLCanvasElement)) throw new Error("Missing lobby fighter canvas");
     this.fighter = new LobbyFighterPreview(
@@ -270,6 +299,11 @@ export class Ui {
     this.setEditPreviewSlot(0);
     this.fighter?.playMove("idle");
     this.setActiveMove("idle");
+    // Prefer Let's fight whenever a fighter is loaded.
+    if (this.profile) {
+      this.showMenu(this.profile);
+      return;
+    }
     const previous = this.paneBeforeEdit;
     if (previous === "menu") this.showMenu(this.profile);
     else if (previous === "login") this.showLogin();
@@ -501,13 +535,17 @@ export class Ui {
     this.saveAvatarButton.addEventListener("click", handler);
   }
 
-  rememberName(): void {
-    const name = this.profile?.displayName || this.displayName();
+  rememberName(explicit?: string): void {
+    const name = explicit?.trim() || this.profile?.displayName || this.displayName();
     if (name && name !== "Fighter") localStorage.setItem("tituah:name", name);
   }
 
   async shatterFrom(target: HTMLElement): Promise<void> {
     await shatterElement(this.lobbyOptions, target);
+  }
+
+  async slapToward(target: HTMLElement): Promise<void> {
+    await this.playSlap(target, false);
   }
 
   setLoading(loading: boolean): void {
@@ -597,11 +635,16 @@ export class Ui {
 
   private async playSlap(target: HTMLElement, shatter = true): Promise<void> {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced) return;
+    if (reduced) {
+      audio.play("uiSlap");
+      if (shatter) audio.play("uiShatter");
+      return;
+    }
     if (this.fighter) {
       await this.fighter.slap(target, shatter ? () => shatterElement(this.lobbyOptions, target) : undefined);
       return;
     }
+    audio.play("uiSlap");
     target.classList.add("is-hit");
     if (shatter) await shatterElement(this.lobbyOptions, target);
     target.classList.remove("is-hit");
@@ -634,9 +677,9 @@ export class Ui {
     required("#player-card-locked").hidden = !locked || waiting;
     required("#player-card-profile").hidden = locked || editing || waiting;
     required("#player-card-waiting").hidden = !waiting;
-    required("#player-card-moves").hidden = locked || !editing || waiting;
+    required("#player-card-moves").hidden = !editing;
     this.playerCard.classList.toggle("is-locked", locked && !waiting);
-    this.playerCard.classList.toggle("is-moves", !locked && editing && !waiting);
+    this.playerCard.classList.toggle("is-moves", editing);
     this.playerCard.classList.toggle("is-waiting", waiting);
     this.lobby.classList.toggle("is-signed-out", locked);
     if (!this.profile) {
@@ -718,12 +761,126 @@ export class Ui {
     }
   }
 
+  private bindMixer(): void {
+    this.muteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.toggleMixer(this.muteButton);
+    });
+    this.hudAudioButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.toggleMixer(this.hudAudioButton);
+    });
+    for (const button of this.mixer.querySelectorAll<HTMLButtonElement>("[data-audio-enabled]")) {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const bus = button.dataset.audioEnabled;
+        if (bus !== "music" && bus !== "sfx") return;
+        audio.toggleEnabled(bus);
+      });
+    }
+    for (const slider of this.mixer.querySelectorAll<HTMLInputElement>("[data-audio-volume]")) {
+      slider.addEventListener("input", () => {
+        const bus = slider.dataset.audioVolume;
+        if (bus !== "music" && bus !== "sfx") return;
+        audio.setVolume(bus, Number(slider.value) / 100);
+      });
+    }
+    this.mixer.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        this.closeMixer();
+        return;
+      }
+      event.stopPropagation();
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (!this.mixerOpen) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (this.mixer.contains(target) || this.muteButton.contains(target) || this.hudAudioButton.contains(target)) {
+        return;
+      }
+      this.closeMixer();
+    });
+    window.addEventListener("resize", () => this.placeMixer());
+    audio.onMuteChange(() => this.syncMixer());
+    this.syncMixer();
+  }
+
+  private toggleMixer(anchor: HTMLButtonElement): void {
+    if (this.mixerOpen && this.mixerAnchor === anchor) {
+      this.closeMixer();
+      return;
+    }
+    this.openMixer(anchor);
+  }
+
+  private openMixer(anchor: HTMLButtonElement): void {
+    this.mixerOpen = true;
+    this.mixerAnchor = anchor;
+    this.mixer.hidden = false;
+    this.syncMixer();
+    this.placeMixer();
+    void audio.unlock();
+  }
+
+  private closeMixer(): void {
+    this.mixerOpen = false;
+    this.mixerAnchor = null;
+    this.mixer.hidden = true;
+    this.syncMixer();
+  }
+
+  private placeMixer(): void {
+    if (!this.mixerOpen || !this.mixerAnchor) return;
+    const rect = this.mixerAnchor.getBoundingClientRect();
+    const width = this.mixer.offsetWidth;
+    const height = this.mixer.offsetHeight;
+    const gap = 8;
+    const alignCenter = this.mixerAnchor === this.hudAudioButton;
+    let left = alignCenter ? rect.left + rect.width / 2 - width / 2 : rect.right - width;
+    let top = rect.bottom + gap;
+    left = Math.min(Math.max(8, left), window.innerWidth - width - 8);
+    if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - gap);
+    this.mixer.style.left = `${Math.round(left)}px`;
+    this.mixer.style.top = `${Math.round(top)}px`;
+  }
+
+  private syncMixer(): void {
+    const muted = audio.isMuted();
+    this.syncSoundButton(this.muteButton, muted);
+    this.syncSoundButton(this.hudAudioButton, muted);
+    for (const bus of ["music", "sfx"] as const) {
+      const enabled = audio.isEnabled(bus);
+      const toggle = this.mixer.querySelector<HTMLButtonElement>(`[data-audio-enabled="${bus}"]`);
+      const slider = this.mixer.querySelector<HTMLInputElement>(`[data-audio-volume="${bus}"]`);
+      const row = toggle?.closest(".audio-mixer-row");
+      if (toggle) {
+        toggle.setAttribute("aria-pressed", String(enabled));
+        toggle.textContent = enabled ? "On" : "Off";
+      }
+      if (slider) {
+        slider.value = String(Math.round(audio.getVolume(bus) * 100));
+        slider.disabled = !enabled;
+      }
+      row?.classList.toggle("is-off", !enabled);
+    }
+  }
+
+  private syncSoundButton(button: HTMLButtonElement, muted: boolean): void {
+    const open = this.mixerOpen && this.mixerAnchor === button;
+    button.setAttribute("aria-pressed", String(muted));
+    button.setAttribute("aria-expanded", String(open));
+    button.setAttribute("aria-label", open ? "Close sound" : "Sound");
+    button.title = "Sound";
+  }
+
   private setError(node: HTMLElement, error?: string): void {
     node.hidden = !error;
     node.textContent = error ?? "";
   }
 
   private setOverlay(visible: boolean): void {
+    this.closeMixer();
     this.overlay.dataset.hidden = visible ? "false" : "true";
     this.fighter?.setActive(visible);
   }

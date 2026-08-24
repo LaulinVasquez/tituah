@@ -86,6 +86,14 @@ export class AuthService {
     this.profile = { ...this.profile, avatar: { ...avatar } };
   }
 
+  patchProfile(partial: Partial<Pick<UserProfile, "displayName">>): void {
+    if (!this.profile) return;
+    this.profile = {
+      ...this.profile,
+      displayName: partial.displayName?.trim() || this.profile.displayName,
+    };
+  }
+
   private emit(): void {
     for (const listener of this.listeners) listener();
   }

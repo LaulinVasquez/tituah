@@ -1,5 +1,7 @@
 import { clientAuth } from "./firebase/firebaseClient.js";
 
+const REQUEST_TIMEOUT_MS = 12_000;
+
 function apiBase(): string {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
   if (import.meta.env.DEV) return "http://localhost:8080";
@@ -10,17 +12,31 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const user = clientAuth().currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
-  const response = await fetch(`${apiBase()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...init.headers,
-    },
-  });
-  const payload = (await response.json()) as T & { error?: string };
-  if (!response.ok) {
-    throw new Error(payload.error ?? `Request failed: ${response.status}`);
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${apiBase()}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...init.headers,
+      },
+    });
+    const payload = (await response.json()) as T & { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error ?? `Request failed: ${response.status}`);
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(
+        "Game server did not respond. Restart dev with `npm run dev` and ensure port 8080 is free.",
+      );
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
   }
-  return payload;
 }

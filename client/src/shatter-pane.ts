@@ -1,9 +1,13 @@
+import { audio } from "./audio/audio-manager.js";
+
 const COLS = 4;
 const ROWS = 5;
 const SHATTER_MS = 720;
 
 export async function shatterElement(source: HTMLElement, impact: HTMLElement): Promise<void> {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  audio.play("uiShatter");
 
   const rect = source.getBoundingClientRect();
   const hit = impact.getBoundingClientRect();

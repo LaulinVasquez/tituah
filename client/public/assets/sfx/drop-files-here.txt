@@ -1,0 +1,21 @@
+Drop ElevenLabs (or other) sound files here using these names.
+.wav is preferred; .mp3 with the same stem also works.
+Hyphens or underscores both load (slap-charge.wav == slap_charge.wav).
+
+jump.wav            Ground jump
+jump-air.wav        Double jump
+land.wav            Landing
+platform-drop.wav   Drop through a platform
+slap-charge.wav     Slap wind-up
+slap-swing.wav      Slap swing / whiff
+slap-hit-light.wav  Light slap connect
+slap-hit-heavy.wav  Fully charged slap connect
+hit.wav             Getting hit
+ko.wav              Blast-zone KO
+respawn.wav         Respawn
+countdown.wav       3-2-1 tick
+fight.wav           Match start
+ui-slap.wav         Lobby button slap
+ui-shatter.wav      Lobby panel shatter
+run.wav             Running footsteps (loops)
+music.wav           Background music (loops)

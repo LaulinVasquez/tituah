@@ -1,12 +1,14 @@
 import { Assets, ColorMatrixFilter, Container, Rectangle, Sprite, Texture } from "pixi.js";
 import type { PlayerState } from "@tituah/shared";
-import { appearanceFromAvatar, appearanceKey, colorHue, extraAccessorySources, type AccessorySprite, type FighterAppearance } from "./appearance.js";
+import { bakeFighterFrame, type BakeSources } from "./accessory-compositor.js";
+import { appearanceFromAvatar, appearanceKey, colorHue, extraAccessorySources, type FighterAppearance } from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
   FIGHTER_VISUAL_HEIGHT,
   RUNNING_SHEET_URL,
   type FighterAnimation,
+  type FighterFrame,
 } from "./fighter-atlas.js";
 
 const RUN_THRESHOLD = 24;
@@ -48,10 +50,8 @@ function loadExtraTextures(): Promise<Map<string, Texture>> {
 
 export class FighterSprite extends Container {
   private readonly sprite = new Sprite();
-  private readonly accessoryLayer = new Container();
-  private readonly accessorySprites = new Map<string, Sprite>();
-  private sheet!: Texture;
   private textures!: Record<FighterAnimation, Texture[]>;
+  private sources!: BakeSources;
   private animation: FighterAnimation = "idle";
   private animationStartedAt = 0;
   private wasGrounded = true;
@@ -64,14 +64,12 @@ export class FighterSprite extends Container {
   private colorKey = "";
   private appearanceCacheKey = "";
   private appearance: FighterAppearance | null = null;
-  private lastFacing: 1 | -1 | 0 = 0;
   private lastFrameIndex = -1;
   private lastFrameAnimation: FighterAnimation | null = null;
-  private extraTextures = new Map<string, Texture>();
 
   constructor(readonly playerId: string) {
     super();
-    this.addChild(this.sprite, this.accessoryLayer);
+    this.addChild(this.sprite);
     this.sprite.anchor.set(0.5, 1);
     this.eventMode = "none";
     this.interactiveChildren = false;
@@ -79,8 +77,12 @@ export class FighterSprite extends Container {
 
   async load(): Promise<void> {
     this.textures = await loadTextures();
-    this.sheet = await Assets.load<Texture>(FIGHTER_SHEET_URL);
-    this.extraTextures = await loadExtraTextures();
+    const [fighterSheet, runningSheet, extras] = await Promise.all([
+      Assets.load<Texture>(FIGHTER_SHEET_URL),
+      Assets.load<Texture>(RUNNING_SHEET_URL),
+      loadExtraTextures(),
+    ]);
+    this.sources = { fighterSheet, runningSheet, extras };
     this.sprite.texture = this.textures.idle[0];
   }
 
@@ -136,22 +138,19 @@ export class FighterSprite extends Container {
 
   update(player: PlayerState, time: number): void {
     this.position.set(player.position.x, player.position.y);
-    if (!this.textures) {
+    if (!this.textures || !this.sources) {
       this.visible = false;
       return;
     }
     const next = this.chooseAnimation(player, time);
     this.setAnimation(next, time);
     const frameIndex = this.frameIndex(time);
-    this.setFrame(frameIndex);
-
     const definition = FIGHTER_ANIMATIONS[this.animation];
     const frame = definition.frames[frameIndex] ?? definition.frames[0];
     const scale = FIGHTER_VISUAL_HEIGHT / frame.height;
 
-    this.sprite.scale.set(scale * player.facing, scale);
-    this.sprite.position.set((frame.offsetX ?? 0) * scale * player.facing, frame.offsetY ?? 0);
     this.syncAppearance(player);
+    this.setFrame(frameIndex, frame, scale, player.facing);
     this.applyHitMotion(time);
     this.zIndex = player.position.y
       + (player.attackState.type === "active" ? 1_000 : 0)
@@ -191,30 +190,52 @@ export class FighterSprite extends Container {
       : Math.min(elapsedFrames, definition.frames.length - 1);
   }
 
-  private setFrame(index: number): void {
-    if (index === this.lastFrameIndex && this.animation === this.lastFrameAnimation) return;
+  private setFrame(index: number, frame: FighterFrame, scale: number, facing: 1 | -1): void {
+    const accessories = this.appearance?.accessories ?? [];
+    const baked = accessories.length > 0 && this.appearance
+      ? bakeFighterFrame(
+        this.appearanceCacheKey,
+        this.animation,
+        index,
+        accessories,
+        this.appearance.color,
+        this.sources,
+      )
+      : null;
+
+    const sameFrame = index === this.lastFrameIndex && this.animation === this.lastFrameAnimation;
+    if (!sameFrame || baked) {
+      this.sprite.texture = baked?.texture ?? this.textures[this.animation][index];
+    }
     this.lastFrameIndex = index;
     this.lastFrameAnimation = this.animation;
-    this.sprite.texture = this.textures[this.animation][index];
+
+    this.sprite.scale.set(scale * facing, scale);
+    if (baked) {
+      this.sprite.anchor.set(baked.anchorX, baked.anchorY);
+      this.sprite.position.set(0, 0);
+      if (this.colorKey !== "") {
+        this.colorKey = "";
+        this.sprite.filters = null;
+      }
+      return;
+    }
+
+    this.sprite.anchor.set(0.5, 1);
+    this.sprite.position.set((frame.offsetX ?? 0) * scale * facing, frame.offsetY ?? 0);
+    this.setColorVariant(this.appearance?.color ?? "orange");
   }
 
   private syncAppearance(player: PlayerState): void {
     const key = appearanceKey(player.avatar, player.spawnIndex);
-    if (key !== this.appearanceCacheKey || !this.appearance) {
-      this.appearanceCacheKey = key;
-      this.appearance = appearanceFromAvatar(player.avatar, player.spawnIndex);
-      this.setColorVariant(this.appearance.color);
-      this.syncAccessories(this.appearance.accessories, player.facing);
-      this.lastFacing = player.facing;
-      return;
-    }
-    if (this.lastFacing !== player.facing) {
-      this.lastFacing = player.facing;
-      this.syncAccessories(this.appearance.accessories, player.facing);
-    }
+    if (key === this.appearanceCacheKey && this.appearance) return;
+    this.appearanceCacheKey = key;
+    this.appearance = appearanceFromAvatar(player.avatar, player.spawnIndex);
+    this.lastFrameIndex = -1;
+    this.lastFrameAnimation = null;
   }
 
-  private setColorVariant(color: ReturnType<typeof appearanceFromAvatar>["color"]): void {
+  private setColorVariant(color: NonNullable<FighterAppearance>["color"]): void {
     if (color === this.colorKey) return;
     this.colorKey = color;
     const hue = colorHue(color);
@@ -226,40 +247,6 @@ export class FighterSprite extends Container {
     filter.hue(hue, false);
     filter.saturate(0.28, true);
     this.sprite.filters = [filter];
-  }
-
-  private syncAccessories(accessories: AccessorySprite[], facing: 1 | -1): void {
-    if (!this.sheet) return;
-    const seen = new Set<string>();
-    for (const accessory of accessories) {
-      seen.add(accessory.id);
-      let sprite = this.accessorySprites.get(accessory.id);
-      const extra = this.extraTextures.get(accessory.id);
-      if (!sprite) {
-        sprite = new Sprite(
-          extra ?? new Texture({
-            source: this.sheet.source,
-            frame: new Rectangle(
-              accessory.frame.x,
-              accessory.frame.y,
-              accessory.frame.width,
-              accessory.frame.height,
-            ),
-          }),
-        );
-        sprite.anchor.set(0.5, 1);
-        this.accessoryLayer.addChild(sprite);
-        this.accessorySprites.set(accessory.id, sprite);
-      }
-      const sourceHeight = extra?.height ?? accessory.frame.height;
-      const accessoryScale = (accessory.visualHeight ?? 42) / sourceHeight;
-      sprite.scale.set(accessoryScale * facing, accessoryScale);
-      sprite.position.set(accessory.anchorX * facing, accessory.anchorY);
-      sprite.visible = true;
-    }
-    for (const [id, sprite] of this.accessorySprites) {
-      if (!seen.has(id)) sprite.visible = false;
-    }
   }
 
   private applyHitMotion(time: number): void {

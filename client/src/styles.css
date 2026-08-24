@@ -59,7 +59,7 @@ body,
   letter-spacing: 0.28em;
   font-size: 12px;
   color: var(--muted);
-  padding-top: 8px;
+  padding-top: 0;
 }
 
 #hud .fighter {
@@ -122,6 +122,162 @@ body,
   grid-template-rows: minmax(0, 1fr);
   gap: 20px;
   overflow: hidden;
+}
+
+.audio-mute {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(13, 19, 32, 0.86);
+  color: var(--text);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+.audio-mute svg {
+  width: 18px;
+  height: 18px;
+}
+
+.audio-mute .icon-off {
+  display: none;
+}
+
+.audio-mute[aria-pressed="true"] {
+  color: var(--muted);
+}
+
+.audio-mute[aria-pressed="true"] .icon-on {
+  display: none;
+}
+
+.audio-mute[aria-pressed="true"] .icon-off {
+  display: block;
+}
+
+.audio-mute:hover,
+.audio-mute:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.hud-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.hud-audio {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgba(237, 241, 247, 0.72);
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
+  cursor: pointer;
+}
+
+.hud-audio svg {
+  width: 22px;
+  height: 22px;
+}
+
+.hud-audio .icon-off {
+  display: none;
+}
+
+.hud-audio[aria-pressed="true"] {
+  color: rgba(147, 160, 181, 0.78);
+}
+
+.hud-audio[aria-pressed="true"] .icon-on {
+  display: none;
+}
+
+.hud-audio[aria-pressed="true"] .icon-off {
+  display: block;
+}
+
+.hud-audio:hover,
+.hud-audio:focus-visible {
+  color: var(--text);
+}
+
+.audio-mixer {
+  position: fixed;
+  z-index: 40;
+  width: min(248px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(12, 18, 30, 0.94);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+}
+
+.audio-mixer-title {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.audio-mixer-row {
+  display: grid;
+  grid-template-columns: 52px 44px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-mixer-row + .audio-mixer-row {
+  margin-top: 10px;
+}
+
+.audio-mixer-row > span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.audio-mixer-row button {
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #1a2436;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.audio-mixer-row button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: rgba(255, 122, 69, 0.16);
+  color: var(--text);
+}
+
+.audio-mixer-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.audio-mixer-row.is-off input[type="range"] {
+  opacity: 0.4;
 }
 
 .lobby-fighter-canvas {
@@ -393,6 +549,10 @@ button.ghost {
   margin-top: 10px;
 }
 
+#player-card-profile:not([hidden]) ~ #player-card-moves {
+  margin-top: 12px;
+}
+
 .move-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -631,50 +791,68 @@ button.is-hit {
 
 .touch-cluster-left {
   left: max(14px, env(safe-area-inset-left, 0px));
-  display: grid;
-  grid-template-columns: 64px 58px 64px;
-  grid-template-rows: 58px 64px 58px;
-  gap: 6px;
 }
 
-.touch-cluster-left .touch-btn[data-action="up"] {
-  grid-column: 2;
-  grid-row: 1;
-  width: 58px;
-  min-width: 58px;
-  height: 58px;
-  font-size: 22px;
+.touch-stick {
+  --stick-x: 0px;
+  --stick-y: 0px;
+  position: relative;
+  width: 148px;
+  height: 148px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.touch-cluster-left .touch-btn[data-action="left"] {
-  grid-column: 1;
-  grid-row: 2;
+.touch-stick-base,
+.touch-stick-knob {
+  pointer-events: none;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.touch-stick-base {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(237, 241, 247, 0.28);
+  background: rgba(18, 24, 38, 0.36);
+  opacity: 0.72;
+}
+
+.touch-stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 64px;
-  min-width: 64px;
   height: 64px;
+  margin: -32px 0 0 -32px;
+  border: 1px solid rgba(237, 241, 247, 0.36);
+  background: rgba(18, 24, 38, 0.62);
+  opacity: 0.82;
+  transform: translate(var(--stick-x), var(--stick-y));
+  will-change: transform;
 }
 
-.touch-cluster-left .touch-btn[data-action="right"] {
-  grid-column: 3;
-  grid-row: 2;
-  width: 64px;
-  min-width: 64px;
-  height: 64px;
+.touch-stick.is-active .touch-stick-base,
+.touch-stick.is-active .touch-stick-knob {
+  opacity: 0.95;
 }
 
-.touch-cluster-left .touch-btn[data-action="down"] {
-  grid-column: 2;
-  grid-row: 3;
-  width: 58px;
-  min-width: 58px;
-  height: 58px;
-  font-size: 22px;
+.touch-stick.is-active .touch-stick-knob {
+  background: rgba(237, 241, 247, 0.22);
 }
 
 .touch-cluster-right {
   right: max(14px, env(safe-area-inset-right, 0px));
   display: grid;
-  justify-items: center;
+  justify-items: end;
+  gap: 10px;
+}
+
+.touch-action-row {
+  display: flex;
+  align-items: flex-end;
   gap: 10px;
 }
 
@@ -709,6 +887,7 @@ button.touch-btn span {
 }
 
 button.touch-btn-jump,
+button.touch-btn-down,
 button.touch-btn-slap {
   font-size: 12px;
   letter-spacing: 0.12em;
@@ -721,10 +900,21 @@ button.touch-btn-jump {
   height: 78px;
 }
 
+button.touch-btn-down {
+  width: 64px;
+  min-width: 64px;
+  height: 64px;
+}
+
 button.touch-btn-slap {
-  background: rgba(255, 122, 69, 0.22);
-  border-color: rgba(255, 122, 69, 0.38);
-  color: rgba(255, 214, 196, 0.85);
+  width: 104px;
+  min-width: 104px;
+  height: 104px;
+  font-size: 14px;
+  opacity: 0.92;
+  background: rgba(255, 122, 69, 0.55);
+  border-color: rgba(255, 122, 69, 0.7);
+  color: rgba(255, 236, 224, 0.95);
 }
 
 button.touch-btn.is-pressed {
@@ -734,7 +924,8 @@ button.touch-btn.is-pressed {
 }
 
 button.touch-btn-slap.is-pressed {
-  background: rgba(255, 122, 69, 0.48);
+  opacity: 1;
+  background: rgba(255, 122, 69, 0.82);
 }
 
 html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {

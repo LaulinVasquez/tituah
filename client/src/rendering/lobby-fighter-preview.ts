@@ -8,6 +8,7 @@ import {
 import { FIGHTER_VISUAL_HEIGHT } from "./sprites/fighter-atlas.js";
 import { FighterSprite } from "./sprites/fighter-sprite.js";
 import { pixiOptions } from "./renderer-options.js";
+import { audio } from "../audio/audio-manager.js";
 
 const CHARGE_MS = 180;
 const ATTACK_MS = 240;
@@ -225,8 +226,10 @@ export class LobbyFighterPreview {
     this.localPlayer.position.y = y;
     this.localPlayer.velocity.x = (rightX - leftX) / (P2_RUN_MS / 1000);
     this.localPlayer.facing = 1;
+    audio.playLoop("run");
 
     await wait(P2_RUN_MS);
+    audio.stop("run");
     if (token !== this.demoToken) return;
 
     this.localPlayer.velocity.x = 0;
@@ -276,6 +279,7 @@ export class LobbyFighterPreview {
     this.localPlayer.facing = 1;
     this.localPlayer.velocity.x = 0;
     this.localPlayer.attackState = { type: "idle" };
+    audio.stop("run");
     this.layout();
   }
 
@@ -284,11 +288,15 @@ export class LobbyFighterPreview {
     const token = this.demoToken + 1;
     this.demoToken = token;
     this.resetBody(this.localPlayer);
+    if (move !== "run") audio.stop("run");
     if (move === "idle") return;
     if (move === "run") void this.playRun(token);
     if (move === "jump") void this.playJump(token);
     if (move === "slap") void this.playSlapInPlace(token);
-    if (move === "hit") this.localFighter.showHit(this.time, 1, 1);
+    if (move === "hit") {
+      audio.play("hit");
+      this.localFighter.showHit(this.time, 1, 1);
+    }
   }
 
   /** In-place slap that resolves when the animation finishes (facing unchanged). */
@@ -384,6 +392,7 @@ export class LobbyFighterPreview {
   }
 
   private async playRun(token: number): Promise<void> {
+    audio.playLoop("run");
     this.localPlayer.velocity.x = 40;
     this.localPlayer.facing = 1;
     await wait(RUN_DEMO_MS / 2);
@@ -391,10 +400,12 @@ export class LobbyFighterPreview {
     this.localPlayer.facing = -1;
     await wait(RUN_DEMO_MS / 2);
     if (token !== this.demoToken) return;
+    audio.stop("run");
     this.resetBody(this.localPlayer);
   }
 
   private async playJump(token: number): Promise<void> {
+    audio.play("jump");
     const baseY = this.localPlayer.position.y;
     this.localPlayer.grounded = false;
     this.localPlayer.velocity.y = -20;
@@ -408,6 +419,7 @@ export class LobbyFighterPreview {
     this.localPlayer.grounded = true;
     this.localPlayer.velocity.y = 0;
     this.localPlayer.position.y = baseY;
+    audio.play("land");
   }
 
   private async playSlapInPlace(
@@ -420,8 +432,12 @@ export class LobbyFighterPreview {
       attackId: PRIMARY_ATTACK_ID,
       startedAt: this.time,
     };
+    audio.play("slapCharge");
     await wait(CHARGE_MS);
-    if (token !== this.demoToken) return;
+    if (token !== this.demoToken) {
+      audio.stop("slapCharge");
+      return;
+    }
 
     this.localPlayer.attackState = {
       type: "active",
@@ -429,6 +445,9 @@ export class LobbyFighterPreview {
       startedAt: this.time,
       charge: 0.6,
     };
+    audio.stop("slapCharge");
+    audio.play("slapSwing");
+    audio.play("uiSlap");
     target?.classList.add("is-hit");
     const hitWork = Promise.resolve(onHit?.());
     await wait(ATTACK_MS);

@@ -18,6 +18,8 @@ import { inventoryRepository } from "../repositories/inventory.repository.js";
 import { itemsRepository } from "../repositories/items.repository.js";
 import { GameRenderer } from "../rendering/game-renderer.js";
 import { Ui } from "../ui.js";
+import { audio } from "../audio/audio-manager.js";
+import { sfx } from "../audio/sfx-director.js";
 import { GameState } from "./game-state.js";
 
 export class GameClient {
@@ -94,6 +96,8 @@ export class GameClient {
 
     await this.renderer.init(canvas);
     await this.ui.startFighterPreview();
+    void audio.load();
+    window.addEventListener("pointerdown", () => void audio.unlock());
     if (!authService.user) this.ui.showAuth();
     this.loop();
   }
@@ -154,8 +158,10 @@ export class GameClient {
   }
 
   private async authenticate(mode: "in" | "up" | "guest", impact?: HTMLElement): Promise<void> {
-    this.ui.setLoading(true);
+    if (this.ui.isLoading) return;
     try {
+      if (impact) await this.ui.slapToward(impact);
+      this.ui.setLoading(true);
       if (mode === "guest") {
         await authService.playAsGuest();
       } else if (mode === "up") {
@@ -164,15 +170,13 @@ export class GameClient {
         await authService.signIn(this.ui.email(), this.ui.password());
       }
       this.ui.rememberName();
-      if (impact) await this.ui.shatterFrom(impact);
+      this.ui.showMenu(authService.profile, undefined, this.guestSession());
+      void this.refreshPreview();
     } catch (error) {
-      this.ui.setLoading(false);
       this.ui.showAuth(messageOf(error));
-      return;
+    } finally {
+      this.ui.setLoading(false);
     }
-    this.ui.setLoading(false);
-    this.ui.showMenu(authService.profile, undefined, this.guestSession());
-    await this.refreshPreview();
   }
 
   private async signOut(): Promise<void> {
@@ -202,13 +206,19 @@ export class GameClient {
   }
 
   private async saveFighter(): Promise<void> {
+    const name = this.ui.displayName("edit");
+    this.ui.rememberName(name);
+    // Optimistic local name so Let's fight shows the update instantly.
+    if (authService.profile && name) {
+      authService.patchProfile({ displayName: name });
+    }
+    // Always jump straight to Let's fight — don't wait on network.
+    this.ui.showMenu(authService.profile, undefined, this.guestSession());
     try {
-      await authService.ensureProfile(this.ui.displayName("edit"));
-      this.ui.rememberName();
-      await this.refreshPreview();
-      this.ui.closeEditor();
+      await authService.ensureProfile(name);
+      void this.refreshPreview();
     } catch (error) {
-      await this.openLocker(messageOf(error));
+      this.ui.showMenu(authService.profile, messageOf(error), this.guestSession());
     }
   }
 
@@ -218,19 +228,33 @@ export class GameClient {
       this.ui.showLocker(null, [], [], () => undefined, () => undefined, error);
       return;
     }
-    const [items, inventory] = await Promise.all([
-      itemsRepository.listEnabled(),
-      inventoryRepository.list(profile.uid),
-    ]);
-    this.lockerItems = items;
+    // Show the editor immediately with whatever we already have, then refresh inventory.
     this.ui.showLocker(
       profile,
-      items,
-      inventory,
+      this.lockerItems,
+      [],
       (itemId) => void this.equip(itemId),
       (slot) => void this.unequip(slot),
       error,
     );
+    try {
+      const [items, inventory] = await Promise.all([
+        itemsRepository.listEnabled(),
+        inventoryRepository.list(profile.uid),
+      ]);
+      this.lockerItems = items;
+      if (!this.ui.editing) return;
+      this.ui.showLocker(
+        authService.profile ?? profile,
+        items,
+        inventory,
+        (itemId) => void this.equip(itemId),
+        (slot) => void this.unequip(slot),
+        error,
+      );
+    } catch (fetchError) {
+      if (this.ui.editing) this.ui.setLockerError(messageOf(fetchError));
+    }
   }
 
   private async equip(itemId: string): Promise<void> {
@@ -276,9 +300,11 @@ export class GameClient {
     }
     if (message.type === "player_hit") {
       this.renderer.showHit(message, this.localTime);
+      sfx.hit(message.charge);
     }
     if (message.type === "player_respawn") {
       this.renderer.showVoidDeath(message.playerId, this.localTime);
+      sfx.respawn();
     }
     if (message.type === "welcome") {
       if (!this.seekingMatch) return;
@@ -305,9 +331,12 @@ export class GameClient {
     if (message.type === "match_countdown") {
       if (!this.seekingMatch) return;
       this.ui.showCountdown(message.seconds);
+      sfx.countdown(message.seconds);
     }
     if (message.type === "match_started") {
       this.seekingMatch = false;
+      sfx.reset();
+      sfx.fight();
       this.renderer.setStage(message.snapshot.stageId);
       this.localTime = this.state.snapshot?.time ?? 0;
       this.accumulator = 0;
@@ -334,6 +363,8 @@ export class GameClient {
           this.renderer.showVoidDeath(player.id, this.localTime);
         }
       }
+      sfx.ko();
+      audio.stop("run");
       const winner = this.state.winnerId
         ? this.state.names.get(this.state.winnerId) ?? "Someone"
         : "Nobody";
@@ -379,6 +410,7 @@ export class GameClient {
     }
     const predicted = this.prediction.apply(clonePlayerState(base), input, this.localTime);
     this.state.predicted = predicted;
+    sfx.observe(predicted);
   }
 
   private draw(): void {

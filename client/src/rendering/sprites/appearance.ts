@@ -36,7 +36,7 @@ const ACCESSORIES: Record<string, AccessorySprite> = {
     id: SPRITE_ASSET_IDS.sunglasses,
     frame: { x: 0, y: 0, width: 998, height: 338 },
     anchorX: 0,
-    anchorY: -60,
+    anchorY: -72,
     url: "/assets/characters/sunglasses.png",
     visualHeight: 26,
   },

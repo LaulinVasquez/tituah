@@ -147,9 +147,22 @@ export async function handleApiRequest(
   return true;
 }
 
+function isAllowedOrigin(origin: string): boolean {
+  if (CORS_ORIGINS.has(origin)) return true;
+  try {
+    const { hostname, protocol } = new URL(origin);
+    return (
+      (hostname === "localhost" || hostname === "127.0.0.1") &&
+      (protocol === "http:" || protocol === "https:")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function setCors(req: IncomingMessage, res: ServerResponse): void {
   const origin = req.headers.origin;
-  if (origin && CORS_ORIGINS.has(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
