@@ -7,6 +7,19 @@ export type AttackType = "melee" | "projectile" | "hitscan" | "throwable";
 
 export type MatchStatus = "waiting" | "countdown" | "playing" | "ended";
 
+export type PlayerCount = 2 | 3 | 4;
+
+export const PLAYER_COUNTS = [2, 3, 4] as const;
+
+export function isPlayerCount(value: unknown): value is PlayerCount {
+  return value === 2 || value === 3 || value === 4;
+}
+
+export function parsePlayerCount(value: unknown): PlayerCount {
+  const numeric = typeof value === "string" ? Number(value) : value;
+  return numeric === 3 || numeric === 4 ? numeric : 2;
+}
+
 export type AttackState =
   | { type: "idle" }
   | {
@@ -133,6 +146,7 @@ export interface MatchSnapshot {
   tick: number;
   time: number;
   status: MatchStatus;
+  maxPlayers: PlayerCount;
   players: PlayerState[];
   projectiles: Projectile[];
   lastProcessedInput: Record<string, number>;

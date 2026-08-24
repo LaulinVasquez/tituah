@@ -17,7 +17,11 @@ export class UsersRepository {
     return result.profile;
   }
 
-  async updateSafe(data: { displayName?: string; username?: string }): Promise<UserProfile | null> {
+  async updateSafe(data: {
+    displayName?: string;
+    username?: string;
+    baseAvatarId?: string;
+  }): Promise<UserProfile | null> {
     const result = await apiRequest<{ profile: UserProfile }>("/api/me", {
       method: "PATCH",
       body: JSON.stringify(data),

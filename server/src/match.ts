@@ -27,6 +27,7 @@ import {
   type HitEvent,
   type MatchSnapshot,
   type MatchStatus,
+  type PlayerCount,
   type PlayerInput,
   type PlayerState,
   type Projectile,
@@ -63,6 +64,7 @@ interface ActiveHitbox {
 export class Match {
   readonly id: string;
   readonly map: StageMap;
+  readonly maxPlayers: PlayerCount;
   readonly players = new Map<string, PlayerState>();
   readonly projectiles: Projectile[] = [];
   readonly scores: Record<string, number> = {};
@@ -88,11 +90,13 @@ export class Match {
     emit: MatchEmitter,
     map: StageMap = DEFAULT_STAGE,
     lifecycle: MatchLifecycle = {},
+    maxPlayers: PlayerCount = 2,
   ) {
     this.id = id;
     this.emit = emit;
     this.map = map;
     this.lifecycle = lifecycle;
+    this.maxPlayers = maxPlayers;
   }
 
   get playerCount(): number {
@@ -100,14 +104,17 @@ export class Match {
   }
 
   addPlayer(id: string, name: string, avatar: AvatarConfiguration = emptyAvatar()): PlayerState {
-    const spawnIndex = this.players.size % this.map.spawns.length;
+    const used = new Set([...this.players.values()].map((player) => player.spawnIndex));
+    let spawnIndex = 0;
+    while (used.has(spawnIndex) && spawnIndex < this.maxPlayers) spawnIndex += 1;
+    spawnIndex = Math.min(spawnIndex, Math.max(0, this.maxPlayers - 1));
     const spawn = this.map.spawns[spawnIndex] ?? this.map.spawns[0];
     const player: PlayerState = {
       id,
       name,
       position: { x: spawn.x, y: spawn.y },
       velocity: { x: 0, y: 0 },
-      facing: spawnIndex === 0 ? 1 : -1,
+      facing: spawnIndex % 2 === 0 ? 1 : -1,
       grounded: true,
       jumpsRemaining: MAX_JUMPS,
       health: PLAYER_MAX_HEALTH,
@@ -144,7 +151,10 @@ export class Match {
       return;
     }
     if (this.status === "playing") {
-      this.endMatch(this.livingPlayers()[0]?.id ?? null);
+      const living = this.livingPlayers();
+      if (living.length <= 1) {
+        this.endMatch(living[0]?.id ?? null);
+      }
     }
   }
 
@@ -165,7 +175,7 @@ export class Match {
   }
 
   beginCountdown(): void {
-    if (this.status !== "waiting" || this.players.size < 2) return;
+    if (this.status !== "waiting" || this.players.size < this.maxPlayers) return;
     this.status = "countdown";
     this.countdownSeconds = 3;
     this.countdownAccum = 0;
@@ -322,6 +332,7 @@ export class Match {
       tick: this.tick,
       time: this.time,
       status: this.status,
+      maxPlayers: this.maxPlayers,
       players: [...this.players.values()].map(clonePlayerState),
       projectiles: this.projectiles.map((projectile) => ({
         ...projectile,
@@ -448,7 +459,7 @@ export class Match {
       const spawn = this.map.spawns[player.spawnIndex] ?? this.map.spawns[0];
       player.position = { x: spawn.x, y: spawn.y };
       player.velocity = { x: 0, y: 0 };
-      player.facing = player.spawnIndex === 0 ? 1 : -1;
+      player.facing = player.spawnIndex % 2 === 0 ? 1 : -1;
       player.grounded = true;
       player.jumpsRemaining = MAX_JUMPS;
       player.health = PLAYER_MAX_HEALTH;

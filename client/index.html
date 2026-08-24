@@ -9,10 +9,17 @@
     <div id="app">
       <canvas id="game"></canvas>
       <div id="hud" hidden>
-        <div class="fighter" data-slot="0">
-          <span class="name">P1</span>
-          <span class="lives"></span>
-          <span class="percent">0%</span>
+        <div class="hud-cluster hud-cluster-left">
+          <div class="fighter" data-slot="0">
+            <span class="name">P1</span>
+            <span class="lives"></span>
+            <span class="percent">0%</span>
+          </div>
+          <div class="fighter" data-slot="2" hidden>
+            <span class="name">P3</span>
+            <span class="lives"></span>
+            <span class="percent">0%</span>
+          </div>
         </div>
         <div class="hud-center">
           <button
@@ -40,10 +47,17 @@
           </button>
           <div class="title">TITUAH</div>
         </div>
-        <div class="fighter" data-slot="1">
-          <span class="name">P2</span>
-          <span class="lives"></span>
-          <span class="percent">0%</span>
+        <div class="hud-cluster hud-cluster-right">
+          <div class="fighter" data-slot="1">
+            <span class="name">P2</span>
+            <span class="lives"></span>
+            <span class="percent">0%</span>
+          </div>
+          <div class="fighter" data-slot="3" hidden>
+            <span class="name">P4</span>
+            <span class="lives"></span>
+            <span class="percent">0%</span>
+          </div>
         </div>
       </div>
       <div id="overlay">
@@ -78,7 +92,7 @@
             <div class="character-stage" id="character-stage">
               <div id="countdown-banner" class="countdown-banner" hidden>3</div>
             </div>
-            <div id="versus-cards" class="versus-cards" hidden>
+            <div id="versus-cards" class="versus-cards" data-size="2" hidden>
               <div class="versus-card" data-slot="0" data-state="empty">
                 <span class="versus-slot">Player 1</span>
                 <strong class="versus-name" id="versus-name-0">—</strong>
@@ -88,13 +102,27 @@
                 <span class="versus-slot">Player 2</span>
                 <strong class="versus-name" id="versus-name-1">—</strong>
               </div>
+              <div class="versus-card" data-slot="2" data-state="empty" hidden>
+                <span class="versus-slot">Player 3</span>
+                <strong class="versus-name" id="versus-name-2">—</strong>
+              </div>
+              <div class="versus-card" data-slot="3" data-state="empty" hidden>
+                <span class="versus-slot">Player 4</span>
+                <strong class="versus-name" id="versus-name-3">—</strong>
+              </div>
+            </div>
+            <div id="extra-platforms" class="extra-platforms" hidden>
+              <div class="character-platform" data-slot="0"></div>
+              <div class="character-platform" data-slot="1"></div>
+              <div class="character-platform" data-slot="2"></div>
+              <div class="character-platform" data-slot="3"></div>
             </div>
             <div id="player-card" class="player-card is-locked">
               <div class="character-platform" id="character-platform"></div>
               <div id="player-card-locked" class="player-card-body">
                 <p class="eyebrow">Progress locked</p>
                 <h3>No fighter loaded</h3>
-                <p class="blurb">Play as guest or sign in to load your name, stats, and cosmetics.</p>
+                <p class="blurb">Play as guest or sign in to load your name, stats, and fighter.</p>
               </div>
               <div id="player-card-profile" class="player-card-body" hidden>
                 <p class="character-name" id="preview-name">Fighter</p>
@@ -132,7 +160,7 @@
             <div id="pane-login" class="pane" hidden>
               <p class="eyebrow">Account</p>
               <h2>Login</h2>
-              <p class="blurb">Sign in to keep stats, cosmetics, and match results.</p>
+              <p class="blurb">Sign in to keep stats, color, and match results.</p>
               <label>
                 Display name
                 <input id="login-name" maxlength="24" placeholder="For new accounts" autocomplete="nickname" />
@@ -168,6 +196,18 @@
                   <strong>Sky-High Meadow</strong><span>Floating islands</span>
                 </button>
               </div>
+              <p class="stage-heading">Players</p>
+              <div class="player-count-select" role="group" aria-label="Players">
+                <button type="button" data-players="2" data-selected="true">
+                  <strong>2</strong><span>Duel</span>
+                </button>
+                <button type="button" data-players="3" data-selected="false">
+                  <strong>3</strong><span>Trio</span>
+                </button>
+                <button type="button" data-players="4" data-selected="false">
+                  <strong>4</strong><span>Free-for-all</span>
+                </button>
+              </div>
               <button id="join" type="button">Find match</button>
               <button id="edit-avatar" class="secondary" type="button">Edit fighter</button>
               <button id="sign-out" class="ghost" type="button">Sign out</button>
@@ -194,16 +234,13 @@
             <div id="pane-edit" class="pane" hidden>
               <p class="eyebrow">Fighter</p>
               <h2>Edit</h2>
-              <p class="blurb">Change your name and equip items. Use the platform under your fighter to preview moves.</p>
-              <div class="preview-slot-toggle" role="group" aria-label="Preview as player">
-                <button type="button" id="preview-slot-0" data-preview-slot="0" data-selected="true">View as Player 1</button>
-                <button type="button" id="preview-slot-1" data-preview-slot="1" data-selected="false">View as Player 2</button>
-              </div>
+              <p class="blurb">Change your name and color. Use the platform under your fighter to preview moves.</p>
               <label>
                 Display name
                 <input id="display-name" maxlength="24" placeholder="Fighter" autocomplete="nickname" />
               </label>
-              <div id="locker-grid" class="locker-grid"></div>
+              <p class="stage-heading">Color</p>
+              <div id="color-grid" class="color-grid" role="radiogroup" aria-label="Fighter color"></div>
               <p id="editor-hint" class="blurb" hidden></p>
               <p id="edit-error" class="error" hidden></p>
               <button id="save-avatar" type="button">Save</button>

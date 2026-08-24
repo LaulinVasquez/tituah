@@ -15,6 +15,8 @@ interface VoidDeathEffect {
   color: number;
 }
 
+const SLOT_COLORS = [0xff7a45, 0x5b9dff, 0x3ecf8e, 0xc084fc];
+const SLOT_BADGE = [0xc84f22, 0x216bc4, 0x1a9a66, 0x8b4fd4];
 const IMPACT_DURATION = 0.24;
 const VOID_EFFECT_DURATION = 0.72;
 
@@ -92,7 +94,7 @@ export class PlayerRenderer {
     this.voidDeaths.push({
       x: Math.max(90, Math.min(1190, x)),
       startedAt: time,
-      color: player.spawnIndex % 2 === 0 ? 0xff7a45 : 0x5b9dff,
+      color: SLOT_COLORS[player.spawnIndex % SLOT_COLORS.length],
     });
   }
 
@@ -255,7 +257,7 @@ export class PlayerRenderer {
       container.eventMode = "none";
       const background = new Graphics()
         .roundRect(-21, -12, 42, 24, 9)
-        .fill({ color: player.spawnIndex % 2 === 0 ? 0xc84f22 : 0x216bc4, alpha: 0.94 })
+        .fill({ color: SLOT_BADGE[player.spawnIndex % SLOT_BADGE.length], alpha: 0.94 })
         .stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
       const text = new Text({
         text: `${Math.round(player.damagePercent)}%`,

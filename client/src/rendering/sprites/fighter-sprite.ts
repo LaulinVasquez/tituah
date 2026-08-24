@@ -1,7 +1,6 @@
 import { Assets, ColorMatrixFilter, Container, Rectangle, Sprite, Texture } from "pixi.js";
 import type { PlayerState } from "@tituah/shared";
-import { bakeFighterFrame, type BakeSources } from "./accessory-compositor.js";
-import { appearanceFromAvatar, appearanceKey, colorHue, extraAccessorySources, type FighterAppearance } from "./appearance.js";
+import { appearanceFromAvatar, appearanceKey, colorHue, type FighterAppearance } from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
@@ -18,7 +17,6 @@ const KO_DURATION = 0.65;
 const RESPAWN_HIDE_DURATION = 0.52;
 
 let texturePromise: Promise<Record<FighterAnimation, Texture[]>> | null = null;
-let extraTexturePromise: Promise<Map<string, Texture>> | null = null;
 
 function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
   if (texturePromise) return texturePromise;
@@ -41,17 +39,9 @@ function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
   return texturePromise;
 }
 
-function loadExtraTextures(): Promise<Map<string, Texture>> {
-  extraTexturePromise ??= Promise.all(
-    extraAccessorySources().map(async ({ id, url }) => [id, await Assets.load<Texture>(url)] as const),
-  ).then((entries) => new Map(entries));
-  return extraTexturePromise;
-}
-
 export class FighterSprite extends Container {
   private readonly sprite = new Sprite();
   private textures!: Record<FighterAnimation, Texture[]>;
-  private sources!: BakeSources;
   private animation: FighterAnimation = "idle";
   private animationStartedAt = 0;
   private wasGrounded = true;
@@ -77,12 +67,6 @@ export class FighterSprite extends Container {
 
   async load(): Promise<void> {
     this.textures = await loadTextures();
-    const [fighterSheet, runningSheet, extras] = await Promise.all([
-      Assets.load<Texture>(FIGHTER_SHEET_URL),
-      Assets.load<Texture>(RUNNING_SHEET_URL),
-      loadExtraTextures(),
-    ]);
-    this.sources = { fighterSheet, runningSheet, extras };
     this.sprite.texture = this.textures.idle[0];
   }
 
@@ -138,7 +122,7 @@ export class FighterSprite extends Container {
 
   update(player: PlayerState, time: number): void {
     this.position.set(player.position.x, player.position.y);
-    if (!this.textures || !this.sources) {
+    if (!this.textures) {
       this.visible = false;
       return;
     }
@@ -191,46 +175,24 @@ export class FighterSprite extends Container {
   }
 
   private setFrame(index: number, frame: FighterFrame, scale: number, facing: 1 | -1): void {
-    const accessories = this.appearance?.accessories ?? [];
-    const baked = accessories.length > 0 && this.appearance
-      ? bakeFighterFrame(
-        this.appearanceCacheKey,
-        this.animation,
-        index,
-        accessories,
-        this.appearance.color,
-        this.sources,
-      )
-      : null;
-
     const sameFrame = index === this.lastFrameIndex && this.animation === this.lastFrameAnimation;
-    if (!sameFrame || baked) {
-      this.sprite.texture = baked?.texture ?? this.textures[this.animation][index];
+    if (!sameFrame) {
+      this.sprite.texture = this.textures[this.animation][index];
     }
     this.lastFrameIndex = index;
     this.lastFrameAnimation = this.animation;
 
     this.sprite.scale.set(scale * facing, scale);
-    if (baked) {
-      this.sprite.anchor.set(baked.anchorX, baked.anchorY);
-      this.sprite.position.set(0, 0);
-      if (this.colorKey !== "") {
-        this.colorKey = "";
-        this.sprite.filters = null;
-      }
-      return;
-    }
-
     this.sprite.anchor.set(0.5, 1);
     this.sprite.position.set((frame.offsetX ?? 0) * scale * facing, frame.offsetY ?? 0);
     this.setColorVariant(this.appearance?.color ?? "orange");
   }
 
   private syncAppearance(player: PlayerState): void {
-    const key = appearanceKey(player.avatar, player.spawnIndex);
+    const key = appearanceKey(player.avatar);
     if (key === this.appearanceCacheKey && this.appearance) return;
     this.appearanceCacheKey = key;
-    this.appearance = appearanceFromAvatar(player.avatar, player.spawnIndex);
+    this.appearance = appearanceFromAvatar(player.avatar);
     this.lastFrameIndex = -1;
     this.lastFrameAnimation = null;
   }

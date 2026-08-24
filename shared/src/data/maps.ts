@@ -18,7 +18,13 @@ export const BARNYARD_STAGE: StageMap = {
     { id: "side-right", x: 860, y: 390, width: 270, height: 24 },
     { id: "top", x: 510, y: 240, width: 260, height: 24 },
   ],
-  spawns: [{ x: 430, y: 560 }, { x: 850, y: 560 }], blast,
+  spawns: [
+    { x: 430, y: 560 },
+    { x: 850, y: 560 },
+    { x: 285, y: 390 },
+    { x: 995, y: 390 },
+  ],
+  blast,
 };
 
 export const FRIDGE_STAGE: StageMap = {
@@ -29,7 +35,13 @@ export const FRIDGE_STAGE: StageMap = {
     { id: "right", x: 835, y: 455, width: 300, height: 24 },
     { id: "top", x: 530, y: 245, width: 220, height: 24 },
   ],
-  spawns: [{ x: 430, y: 575 }, { x: 850, y: 575 }], blast,
+  spawns: [
+    { x: 430, y: 575 },
+    { x: 850, y: 575 },
+    { x: 295, y: 385 },
+    { x: 985, y: 455 },
+  ],
+  blast,
 };
 
 export const MEADOW_STAGE: StageMap = {
@@ -40,7 +52,13 @@ export const MEADOW_STAGE: StageMap = {
     { id: "side-right", x: 890, y: 410, width: 295, height: 24 },
     { id: "top", x: 520, y: 240, width: 240, height: 24 },
   ],
-  spawns: [{ x: 455, y: 570 }, { x: 825, y: 570 }], blast,
+  spawns: [
+    { x: 455, y: 570 },
+    { x: 825, y: 570 },
+    { x: 242, y: 410 },
+    { x: 1037, y: 410 },
+  ],
+  blast,
 };
 
 export const STAGES: Record<StageId, StageMap> = {

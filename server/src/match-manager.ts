@@ -1,15 +1,22 @@
-import { getStage, isStageId, TICK_DT, TICK_RATE, type PlayerInput, type ServerMessage } from "@tituah/shared";
+import {
+  getStage,
+  isStageId,
+  parsePlayerCount,
+  TICK_DT,
+  TICK_RATE,
+  type PlayerCount,
+  type PlayerInput,
+  type ServerMessage,
+} from "@tituah/shared";
 import { Match } from "./match.js";
 import type { Session } from "./session.js";
 import { createUserProfile, recordMatchResult } from "./services/firebase/game-data.js";
 import { matchesRepository } from "./repositories/matches.repository.js";
 import { verifyIdToken } from "./services/firebase/firebaseAdmin.js";
 
-const PLAYERS_PER_MATCH = 2;
-
 export class MatchManager {
   private readonly matches = new Map<string, Match>();
-  private waiting: Match | null = null;
+  private readonly waitingByRoom = new Map<string, Match[]>();
   private readonly sessionsByPlayer = new Map<string, Session>();
   private accumulator = 0;
   private lastTime = performance.now();
@@ -32,6 +39,7 @@ export class MatchManager {
     name: string,
     idToken: string,
     requestedStageId: string,
+    requestedPlayerCount?: unknown,
   ): Promise<Match> {
     const decoded = await verifyIdToken(idToken);
     const profile = await createUserProfile(decoded.uid, {
@@ -51,7 +59,8 @@ export class MatchManager {
 
     session.playerId = profile.uid;
 
-    const match = this.getOrCreateWaitingMatch(requestedStageId);
+    const playerCount = parsePlayerCount(requestedPlayerCount);
+    const match = this.getOrCreateWaitingMatch(requestedStageId, playerCount);
     const player = match.addPlayer(profile.uid, profile.displayName, profile.avatar);
     session.matchId = match.id;
     this.sessionsByPlayer.set(player.id, session);
@@ -64,6 +73,7 @@ export class MatchManager {
         matchId: match.id,
         player,
         players: roster,
+        maxPlayers: match.maxPlayers,
       } satisfies ServerMessage),
     );
 
@@ -74,8 +84,8 @@ export class MatchManager {
       player,
     });
 
-    if (match.playerCount >= PLAYERS_PER_MATCH) {
-      this.waiting = null;
+    if (match.playerCount >= match.maxPlayers) {
+      this.removeFromWaiting(match);
       match.beginCountdown();
     }
 
@@ -95,10 +105,10 @@ export class MatchManager {
     });
 
     if (match.playerCount === 0) {
-      if (this.waiting === match) this.waiting = null;
+      this.removeFromWaiting(match);
       this.matches.delete(match.id);
     } else if (match.status === "waiting") {
-      this.waiting = match;
+      this.ensureWaiting(match);
     }
     session.playerId = null;
     session.matchId = null;
@@ -127,11 +137,18 @@ export class MatchManager {
     return this.matches.get(session.matchId) ?? null;
   }
 
-  private getOrCreateWaitingMatch(requestedStageId: string): Match {
-    if (this.waiting && this.waiting.status === "waiting") {
-      return this.waiting;
-    }
-    const stage = getStage(isStageId(requestedStageId) ? requestedStageId : "barnyard");
+  private roomKey(stageId: string, playerCount: PlayerCount): string {
+    return `${stageId}:${playerCount}`;
+  }
+
+  private getOrCreateWaitingMatch(requestedStageId: string, playerCount: PlayerCount): Match {
+    const stageId = isStageId(requestedStageId) ? requestedStageId : "barnyard";
+    const key = this.roomKey(stageId, playerCount);
+    const rooms = this.waitingByRoom.get(key) ?? [];
+    const open = rooms.find((match) => match.status === "waiting" && match.playerCount < match.maxPlayers);
+    if (open) return open;
+
+    const stage = getStage(stageId);
     const match = new Match(
       crypto.randomUUID(),
       (playerId, message) => {
@@ -162,10 +179,31 @@ export class MatchManager {
           }).catch((error) => console.error("Failed to persist match result", error));
         },
       },
+      playerCount,
     );
     this.matches.set(match.id, match);
-    this.waiting = match;
+    rooms.push(match);
+    this.waitingByRoom.set(key, rooms);
     return match;
+  }
+
+  private removeFromWaiting(match: Match): void {
+    const key = this.roomKey(match.map.id, match.maxPlayers);
+    const rooms = this.waitingByRoom.get(key);
+    if (!rooms) return;
+    const next = rooms.filter((entry) => entry !== match);
+    if (next.length) this.waitingByRoom.set(key, next);
+    else this.waitingByRoom.delete(key);
+  }
+
+  private ensureWaiting(match: Match): void {
+    if (match.status !== "waiting") return;
+    const key = this.roomKey(match.map.id, match.maxPlayers);
+    const rooms = this.waitingByRoom.get(key) ?? [];
+    if (!rooms.includes(match)) {
+      rooms.push(match);
+      this.waitingByRoom.set(key, rooms);
+    }
   }
 
   private send(match: Match, playerId: string | null, message: ServerMessage): void {

@@ -1,10 +1,9 @@
 import {
   clonePlayerState,
   DEFAULT_STAGE,
-  SLOT_TO_AVATAR_FIELD,
+  parsePlayerCount,
   TICK_DT,
-  type InventoryItem,
-  type ItemSlot,
+  type FighterColor,
   type PlayerState,
   type ServerMessage,
 } from "@tituah/shared";
@@ -14,8 +13,6 @@ import { GameSocket } from "../network/game-socket.js";
 import { MessageHandler } from "../network/message-handler.js";
 import { InterpolationManager } from "../prediction/interpolation-manager.js";
 import { PredictionManager } from "../prediction/prediction-manager.js";
-import { inventoryRepository } from "../repositories/inventory.repository.js";
-import { itemsRepository } from "../repositories/items.repository.js";
 import { GameRenderer } from "../rendering/game-renderer.js";
 import { Ui } from "../ui.js";
 import { audio } from "../audio/audio-manager.js";
@@ -36,7 +33,7 @@ export class GameClient {
   private lastFrame = performance.now();
   private localTime = 0;
   private seekingMatch = false;
-  private lockerItems: InventoryItem[] = [];
+  private colorSave: Promise<void> = Promise.resolve();
 
   async start(canvas: HTMLCanvasElement): Promise<void> {
     this.input = new InputManager(canvas);
@@ -71,8 +68,9 @@ export class GameClient {
     this.ui.onJoin(() => void this.connect());
     this.ui.onCancelWait(() => this.cancelWait());
     this.ui.onAgain(() => void this.connect());
-    this.ui.onEditAvatar(() => void this.openLocker());
+    this.ui.onEditAvatar(() => void this.openEditor());
     this.ui.onSaveAvatar(() => void this.saveFighter());
+    this.ui.onSelectColor((color) => this.persistColor(color));
     this.ui.onBackFromEdit(() => this.ui.closeEditor());
 
     authService.start();
@@ -80,7 +78,7 @@ export class GameClient {
       if (this.state.playing()) return;
       if (!authService.user) {
         this.ui.showAuth();
-        this.ui.setPreview(null, []);
+        this.ui.setPreview(null);
         return;
       }
       if (!authService.profile) return;
@@ -110,6 +108,7 @@ export class GameClient {
       }
       this.ui.rememberName();
       this.ui.setLoading(true);
+      await this.colorSave.catch(() => undefined);
       await authService.ensureProfile(authService.profile?.displayName ?? this.ui.displayName());
       this.ui.setLoading(false);
       this.seekingMatch = true;
@@ -149,6 +148,7 @@ export class GameClient {
         name: authService.profile?.displayName ?? this.ui.displayName(),
         idToken,
         stageId: this.ui.stageId(),
+        playerCount: this.ui.playerCount(),
       });
     } catch (error) {
       this.seekingMatch = false;
@@ -183,7 +183,7 @@ export class GameClient {
     this.seekingMatch = false;
     this.socket.disconnect();
     await authService.signOut();
-    this.ui.setPreview(null, []);
+    this.ui.setPreview(null);
     this.ui.showAuth();
   }
 
@@ -194,101 +194,42 @@ export class GameClient {
   private async refreshPreview(): Promise<void> {
     const profile = authService.profile;
     if (!profile) {
-      this.ui.setPreview(null, []);
+      this.ui.setPreview(null);
       return;
     }
-    try {
-      const items = await itemsRepository.listEnabled();
-      this.ui.setPreview(profile, items, this.guestSession());
-    } catch {
-      this.ui.setPreview(profile, [], this.guestSession());
-    }
+    this.ui.setPreview(profile, this.guestSession());
   }
 
   private async saveFighter(): Promise<void> {
     const name = this.ui.displayName("edit");
+    const color = this.ui.fighterColor();
     this.ui.rememberName(name);
-    // Optimistic local name so Let's fight shows the update instantly.
-    if (authService.profile && name) {
+    if (authService.profile) {
       authService.patchProfile({ displayName: name });
+      authService.patchAvatar({ ...authService.profile.avatar, baseAvatarId: color });
     }
-    // Always jump straight to Let's fight — don't wait on network.
     this.ui.showMenu(authService.profile, undefined, this.guestSession());
     try {
-      await authService.ensureProfile(name);
+      await this.colorSave.catch(() => undefined);
+      await authService.saveFighter({ displayName: name, baseAvatarId: color });
       void this.refreshPreview();
     } catch (error) {
       this.ui.showMenu(authService.profile, messageOf(error), this.guestSession());
     }
   }
 
-  private async openLocker(error?: string): Promise<void> {
+  private persistColor(color: FighterColor): void {
+    if (!authService.profile) return;
+    this.colorSave = this.colorSave
+      .catch(() => undefined)
+      .then(async () => {
+        await authService.persistAvatarColor(color);
+      });
+  }
+
+  private async openEditor(error?: string): Promise<void> {
     const profile = authService.profile ?? (await authService.refreshProfile().catch(() => null));
-    if (!profile) {
-      this.ui.showLocker(null, [], [], () => undefined, () => undefined, error);
-      return;
-    }
-    // Show the editor immediately with whatever we already have, then refresh inventory.
-    this.ui.showLocker(
-      profile,
-      this.lockerItems,
-      [],
-      (itemId) => void this.equip(itemId),
-      (slot) => void this.unequip(slot),
-      error,
-    );
-    try {
-      const [items, inventory] = await Promise.all([
-        itemsRepository.listEnabled(),
-        inventoryRepository.list(profile.uid),
-      ]);
-      this.lockerItems = items;
-      if (!this.ui.editing) return;
-      this.ui.showLocker(
-        authService.profile ?? profile,
-        items,
-        inventory,
-        (itemId) => void this.equip(itemId),
-        (slot) => void this.unequip(slot),
-        error,
-      );
-    } catch (fetchError) {
-      if (this.ui.editing) this.ui.setLockerError(messageOf(fetchError));
-    }
-  }
-
-  private async equip(itemId: string): Promise<void> {
-    const item = this.lockerItems.find((entry) => entry.id === itemId);
-    const previous = authService.profile?.avatar;
-    if (item && authService.profile) {
-      const field = SLOT_TO_AVATAR_FIELD[item.slot];
-      this.applyAvatar({ ...authService.profile.avatar, [field]: itemId });
-    }
-    try {
-      this.applyAvatar(await inventoryRepository.equip(itemId));
-    } catch (error) {
-      if (previous) this.applyAvatar(previous);
-      this.ui.setLockerError(messageOf(error));
-    }
-  }
-
-  private async unequip(slot: ItemSlot): Promise<void> {
-    const previous = authService.profile?.avatar;
-    if (authService.profile) {
-      const field = SLOT_TO_AVATAR_FIELD[slot];
-      this.applyAvatar({ ...authService.profile.avatar, [field]: null });
-    }
-    try {
-      this.applyAvatar(await inventoryRepository.unequip(slot));
-    } catch (error) {
-      if (previous) this.applyAvatar(previous);
-      this.ui.setLockerError(messageOf(error));
-    }
-  }
-
-  private applyAvatar(avatar: NonNullable<typeof authService.profile>["avatar"]): void {
-    authService.patchAvatar(avatar);
-    this.ui.applyAvatar(avatar);
+    this.ui.showEditor(profile, error);
   }
 
   private onServerMessage(message: ServerMessage): void {
@@ -308,25 +249,21 @@ export class GameClient {
     }
     if (message.type === "welcome") {
       if (!this.seekingMatch) return;
-      const slot = (message.player.spawnIndex % 2 === 0 ? 0 : 1) as 0 | 1;
+      const maxPlayers = parsePlayerCount(message.maxPlayers);
       const others = message.players.filter((player) => player.id !== message.playerId);
       if (others.length > 0) {
-        void this.ui.showVersus(message.player, others[0], "p2-run");
+        void this.ui.showRoster(message.player, message.players, maxPlayers, "join-run");
       } else {
-        this.ui.showWaiting(slot);
+        this.ui.showWaiting(message.player.spawnIndex, maxPlayers);
       }
     }
     if (message.type === "player_joined") {
       if (!this.seekingMatch) return;
-      const local = this.state.predicted;
-      if (!local) return;
-      void this.ui.showVersus(local, message.player, "p1-reveal");
+      this.ui.addWaitingPlayer(message.player);
     }
     if (message.type === "player_left") {
       if (!this.seekingMatch) return;
-      const local = this.state.predicted;
-      if (!local) return;
-      this.ui.showWaiting((local.spawnIndex % 2 === 0 ? 0 : 1) as 0 | 1);
+      this.ui.removeWaitingPlayer(message.playerId);
     }
     if (message.type === "match_countdown") {
       if (!this.seekingMatch) return;

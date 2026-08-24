@@ -8,6 +8,8 @@
   --accent: #ff7a45;
   --p1: #3ecf8e;
   --p2: #5b9dff;
+  --p3: #c084fc;
+  --p4: #f5c542;
 }
 
 * {
@@ -66,6 +68,23 @@ body,
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.hud-cluster {
+  display: flex;
+  gap: 18px;
+}
+
+.hud-cluster-right {
+  justify-content: flex-end;
+}
+
+.hud-cluster-right .fighter {
+  text-align: right;
+}
+
+#hud .fighter[hidden] {
+  display: none;
 }
 
 #hud .fighter[data-slot="1"] {
@@ -356,6 +375,35 @@ button {
 .stage-select strong { font-size: 12px; }
 .stage-select span { margin-top: 4px; color: var(--muted); font-size: 10px; }
 
+.player-count-select {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.player-count-select button {
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: #0d1320;
+  color: var(--text);
+}
+
+.player-count-select button[data-selected="true"] {
+  border-color: var(--accent);
+  background: rgba(255, 122, 69, 0.15);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.player-count-select strong,
+.player-count-select span {
+  display: block;
+}
+
+.player-count-select strong { font-size: 16px; }
+.player-count-select span { margin-top: 2px; color: var(--muted); font-size: 10px; }
+
 input {
   padding: 12px 14px;
   border-radius: 10px;
@@ -504,6 +552,27 @@ button.ghost {
   pointer-events: none;
 }
 
+.extra-platforms {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  pointer-events: none;
+  height: 16px;
+}
+
+.extra-platforms .character-platform {
+  position: absolute;
+  top: 0;
+  width: min(22%, 96px);
+  height: 14px;
+  transform: translateX(-50%);
+}
+
+.lobby.is-versus .player-card > .character-platform {
+  opacity: 0;
+}
+
 .player-card.is-locked {
   border-top-color: #3a465c;
   background:
@@ -577,13 +646,28 @@ button.ghost {
   color: #1a0d08;
 }
 
-.locker-grid {
+.color-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
-  max-height: min(28vh, 220px);
-  margin: 8px 0 16px;
-  overflow: auto;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.color-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--swatch, var(--accent));
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  color: transparent;
+}
+
+.color-swatch[data-selected="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+  border-color: rgba(255, 255, 255, 0.55);
 }
 
 button.is-hit {
@@ -988,6 +1072,18 @@ html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {
   background: rgba(91, 157, 255, 0.14);
 }
 
+.slot-chip[data-slot="2"] {
+  color: #d8b4fe;
+  border-color: rgba(192, 132, 252, 0.55);
+  background: rgba(192, 132, 252, 0.14);
+}
+
+.slot-chip[data-slot="3"] {
+  color: #fde68a;
+  border-color: rgba(245, 197, 66, 0.55);
+  background: rgba(245, 197, 66, 0.16);
+}
+
 .player-card.is-waiting {
   border-top-color: #ff7a45;
   text-align: center;
@@ -1010,6 +1106,23 @@ html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {
   margin: 8px 0 4px;
 }
 
+.versus-cards[data-size="3"] {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.versus-cards[data-size="4"] {
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+
+.versus-cards[data-size="3"] .versus-vs,
+.versus-cards[data-size="4"] .versus-vs {
+  display: none;
+}
+
+.versus-card[hidden] {
+  display: none !important;
+}
+
 .versus-card {
   padding: 10px 12px;
   border: 1px solid var(--line);
@@ -1024,6 +1137,15 @@ html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {
 
 .versus-card[data-slot="1"] {
   border-top-color: #5b9dff;
+  text-align: right;
+}
+
+.versus-card[data-slot="2"] {
+  border-top-color: #c084fc;
+}
+
+.versus-card[data-slot="3"] {
+  border-top-color: #f5c542;
   text-align: right;
 }
 
@@ -1084,29 +1206,6 @@ html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {
   font-size: 28px;
   font-weight: 800;
   letter-spacing: 0.08em;
-}
-
-.preview-slot-toggle {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin: 0 0 14px;
-}
-
-.preview-slot-toggle button {
-  padding: 10px 8px;
-  background: #243049;
-  color: var(--text);
-  font-size: 12px;
-}
-
-.preview-slot-toggle button[data-selected="true"] {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.preview-slot-toggle button[data-preview-slot="1"][data-selected="true"] {
-  outline-color: #5b9dff;
 }
 
 @media (max-width: 720px) {

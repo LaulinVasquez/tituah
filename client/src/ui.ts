@@ -1,12 +1,14 @@
 import {
-  AVATAR_FIELD_TO_SLOT,
+  FIGHTER_COLOR_HEX,
+  FIGHTER_COLORS,
+  emptyAvatar,
+  fighterColorFromId,
+  isFighterColor,
   isStageId,
-  SLOT_TO_AVATAR_FIELD,
-  type AvatarConfiguration,
-  type InventoryItem,
-  type ItemSlot,
+  parsePlayerCount,
+  type FighterColor,
+  type PlayerCount,
   type StageId,
-  type UserInventoryItem,
   type PlayerState,
   type UserProfile,
 } from "@tituah/shared";
@@ -37,7 +39,7 @@ export class Ui {
   readonly menuKind = required("#menu-kind");
   readonly menuBlurb = required("#menu-blurb");
   readonly editorHint = required("#editor-hint");
-  readonly lockerGrid = required("#locker-grid");
+  readonly colorGrid = required("#color-grid");
   readonly editButton = required("#edit-avatar", HTMLButtonElement);
   readonly saveAvatarButton = required("#save-avatar", HTMLButtonElement);
   readonly displayNameInput = required("#display-name", HTMLInputElement);
@@ -61,6 +63,7 @@ export class Ui {
   readonly hudAudioButton = required("#hud-audio", HTMLButtonElement);
   readonly mixer = required("#audio-mixer");
   readonly stageButtons = document.querySelectorAll<HTMLButtonElement>("[data-stage]");
+  readonly playerCountButtons = document.querySelectorAll<HTMLButtonElement>("[data-players]");
 
   private pane: LobbyPane = "landing";
   private paneBeforeEdit: LobbyPane = "landing";
@@ -68,18 +71,21 @@ export class Ui {
   private loading = false;
   private editPreviewToken = 0;
   private guestSession = false;
-  private previewItems: InventoryItem[] = [];
-  private lockerInventory: UserInventoryItem[] = [];
-  private onEquipItem: (itemId: string) => void = () => undefined;
-  private onUnequipItem: (slot: ItemSlot) => void = () => undefined;
+  private selectedColor: FighterColor = "orange";
+  private onColorSelected: (color: FighterColor) => void = () => undefined;
   private profile: UserProfile | null = null;
   private fighter?: LobbyFighterPreview;
   private selectedStage: StageId = "barnyard";
+  private selectedPlayerCount: PlayerCount = 2;
+  private matchSize: PlayerCount = 2;
+  private waitingRoster: PlayerState[] = [];
+  private waitingLocal: PlayerState | null = null;
   private hudKey = "";
   private mixerOpen = false;
   private mixerAnchor: HTMLButtonElement | null = null;
   private readonly hudSlots = [...this.hud.querySelectorAll<HTMLElement>(".fighter")].map((slot) => ({
     index: Number(slot.dataset.slot),
+    node: slot,
     name: slot.querySelector(".name"),
     lives: slot.querySelector(".lives"),
     percent: slot.querySelector(".percent"),
@@ -107,11 +113,9 @@ export class Ui {
         this.selectStage(id);
       });
     }
-    for (const button of document.querySelectorAll<HTMLButtonElement>("[data-preview-slot]")) {
+    for (const button of this.playerCountButtons) {
       button.addEventListener("click", () => {
-        const slot = Number(button.dataset.previewSlot);
-        if (slot !== 0 && slot !== 1) return;
-        this.setEditPreviewSlot(slot, true);
+        this.selectPlayerCount(parsePlayerCount(button.dataset.players));
       });
     }
     this.displayNameInput.addEventListener("input", () => {
@@ -123,7 +127,15 @@ export class Ui {
     this.displayNameInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") this.saveAvatarButton.click();
     });
+    this.colorGrid.addEventListener("click", (event) => {
+      const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-color]");
+      if (!button || button.disabled || this.slapping) return;
+      const color = button.dataset.color;
+      if (!isFighterColor(color)) return;
+      void this.selectColor(color, true);
+    });
     this.selectStage(this.selectedStage);
+    this.selectPlayerCount(this.selectedPlayerCount);
     this.bindMixer();
     required("#lobby").addEventListener(
       "click",
@@ -140,8 +152,8 @@ export class Ui {
         ) {
           return;
         }
-        // Preview-slot toggles handle their own in-place slap.
-        if (button.dataset.previewSlot != null) return;
+        // Color swatches handle their own in-place jump.
+        if (button.classList.contains("color-swatch")) return;
         const demo = button.dataset.demoMove;
         if (demo && isDemoMove(demo)) {
           event.preventDefault();
@@ -164,14 +176,13 @@ export class Ui {
           button.click();
           delete button.dataset.slapReplay;
         };
-        // Stay in lobby: slap, no shatter (stage / attire / edit chrome).
-        if (
-          button.dataset.stage
-          || button.classList.contains("item-card")
-          || button.id === "save-avatar"
-          || button.id === "back-edit"
-          || button.id === "edit-avatar"
-        ) {
+        // Stay on this pane: jump instead of slap.
+        if (button.dataset.stage || button.dataset.players) {
+          void this.jumpThen(replay);
+          return;
+        }
+        // Edit fighter stays in the lobby overlay: slap, no shatter.
+        if (button.id === "edit-avatar") {
           void this.slapThen(button, replay, false);
           return;
         }
@@ -211,6 +222,10 @@ export class Ui {
     return this.selectedStage;
   }
 
+  playerCount(): PlayerCount {
+    return this.selectedPlayerCount;
+  }
+
   private selectStage(stageId: StageId): void {
     this.selectedStage = stageId;
     for (const entry of this.stageButtons) {
@@ -218,6 +233,13 @@ export class Ui {
     }
     const url = STAGE_VISUALS[stageId].background;
     this.characterStageBackdrop.style.setProperty("--stage-backdrop", `url("${url}")`);
+  }
+
+  private selectPlayerCount(playerCount: PlayerCount): void {
+    this.selectedPlayerCount = playerCount;
+    for (const entry of this.playerCountButtons) {
+      entry.dataset.selected = String(parsePlayerCount(entry.dataset.players) === playerCount);
+    }
   }
 
   email(): string {
@@ -260,43 +282,32 @@ export class Ui {
     this.fighter?.clearRoster();
     this.setOverlay(true);
     this.hud.hidden = true;
-    this.setPreview(profile ?? this.profile, this.previewItems, guestSession);
+    this.setPreview(profile ?? this.profile, guestSession);
     this.setPane("menu");
     this.setPaneError(error);
   }
 
-  showLocker(
-    profile: UserProfile | null,
-    items: InventoryItem[],
-    inventory: UserInventoryItem[],
-    onEquip: (itemId: string) => void,
-    onUnequip: (slot: ItemSlot) => void,
-    error?: string,
-  ): void {
+  showEditor(profile: UserProfile | null, error?: string): void {
     this.setSeeking(false);
     this.setMatchmakingMode(false);
     this.fighter?.clearRoster();
     this.setOverlay(true);
     if (this.pane !== "edit") this.paneBeforeEdit = this.pane;
-    this.lockerInventory = inventory;
-    this.onEquipItem = onEquip;
-    this.onUnequipItem = onUnequip;
-    this.setPreview(profile, items, this.guestSession);
+    this.selectedColor = fighterColorFromId(profile?.avatar.baseAvatarId);
+    this.setPreview(profile, this.guestSession);
     this.displayNameInput.value = profile?.displayName ?? "";
     this.setPane("edit");
-    this.setEditPreviewSlot(0);
-    this.renderLocker(profile, items, inventory, onEquip, onUnequip);
+    this.renderColorPicker(profile);
     this.setError(this.editError, error);
     this.setActiveMove("idle");
     this.displayNameInput.focus();
   }
 
-  setLockerError(error?: string): void {
-    this.setError(this.editError, error);
+  fighterColor(): FighterColor {
+    return this.selectedColor;
   }
 
   closeEditor(): void {
-    this.setEditPreviewSlot(0);
     this.fighter?.playMove("idle");
     this.setActiveMove("idle");
     // Prefer Let's fight whenever a fighter is loaded.
@@ -310,7 +321,8 @@ export class Ui {
     else this.showAuth();
   }
 
-  showWaiting(slot?: 0 | 1): void {
+  showWaiting(slot?: number, maxPlayers: PlayerCount = this.selectedPlayerCount): void {
+    this.matchSize = maxPlayers;
     this.setOverlay(true);
     this.hud.hidden = true;
     this.setSeeking(true);
@@ -320,27 +332,24 @@ export class Ui {
     required("#waiting-solo").hidden = false;
     required("#waiting-versus").hidden = true;
     required("#waiting-countdown").hidden = true;
-    required("#waiting-title").textContent = "Waiting for opponent";
-    required("#platform-waiting-title").textContent = "Waiting for opponent";
+    const waitingLabel = maxPlayers === 2 ? "Waiting for opponent" : "Waiting for players";
+    required("#waiting-title").textContent = waitingLabel;
+    required("#platform-waiting-title").textContent = waitingLabel;
     required("#platform-waiting-blurb").textContent =
-      slot === 1
-        ? "You’re Player 2 — hold while the roster locks in."
-        : "Hold your charge — an opponent will appear on the right.";
-    this.setVersusNames(
-      this.profile?.displayName ?? "You",
-      "Waiting for opponent",
-      slot === 1 ? "pending" : "ready",
-      "waiting",
-    );
+      maxPlayers === 2
+        ? slot === 1
+          ? "You’re Player 2 — hold while the roster locks in."
+          : "Hold your charge — an opponent will appear on the right."
+        : `Hold your charge — ${maxPlayers - 1} more fighter${maxPlayers > 2 ? "s" : ""} can join this room.`;
     this.setPane("waiting");
     if (this.profile) {
-      const spawnIndex = (slot ?? 0) as 0 | 1;
+      const spawnIndex = slot ?? 0;
       const local: PlayerState = {
         id: this.profile.uid,
         name: this.profile.displayName,
         position: { x: 0, y: 0 },
         velocity: { x: 0, y: 0 },
-        facing: spawnIndex === 0 ? 1 : -1,
+        facing: spawnIndex % 2 === 0 ? 1 : -1,
         grounded: true,
         jumpsRemaining: 2,
         health: 100,
@@ -352,8 +361,12 @@ export class Ui {
         invulnerableUntil: 0,
         avatar: this.profile.avatar,
       };
-      // Before welcome, and for P1 alone: expanded ghost layout.
-      this.fighter?.setWaitingGhost({ ...local, spawnIndex: 0, facing: 1 });
+      this.waitingLocal = local;
+      this.waitingRoster = [local];
+      this.syncVersusRoster(this.waitingRoster, maxPlayers);
+      this.fighter?.setWaitingRoster(local, maxPlayers);
+    } else {
+      this.syncVersusRoster([], maxPlayers);
     }
   }
 
@@ -362,40 +375,72 @@ export class Ui {
     opponent: PlayerState,
     entrance: "p1-reveal" | "p2-run" | "instant" = "instant",
   ): Promise<void> {
+    await this.showRoster(local, [local, opponent], this.matchSize, entrance === "p2-run" ? "join-run" : "reveal");
+  }
+
+  async showRoster(
+    local: PlayerState,
+    players: PlayerState[],
+    maxPlayers: PlayerCount = this.matchSize,
+    entrance: "join-run" | "reveal" | "instant" = "instant",
+  ): Promise<void> {
+    this.matchSize = maxPlayers;
+    this.waitingLocal = local;
+    this.waitingRoster = [...players];
     this.setOverlay(true);
     this.hud.hidden = true;
-    this.setSeeking(false);
+    this.setSeeking(players.length < maxPlayers);
     this.setMatchmakingMode(true);
-    this.applyWaitingSlot(local.spawnIndex === 0 ? 0 : 1);
-    required("#waiting-solo").hidden = true;
-    required("#waiting-versus").hidden = false;
+    this.applyWaitingSlot(local.spawnIndex);
+    const full = players.length >= maxPlayers;
+    required("#waiting-solo").hidden = full;
+    required("#waiting-versus").hidden = !full;
     required("#waiting-countdown").hidden = true;
-    required("#waiting-title").textContent = "Match found";
-    required("#platform-waiting-title").textContent = "Match found";
-    required("#platform-waiting-blurb").textContent = "Both fighters are ready — countdown starting.";
+    required("#countdown-banner").hidden = true;
+    required("#waiting-title").textContent = full ? "Match found" : `Waiting for players (${players.length}/${maxPlayers})`;
+    required("#platform-waiting-title").textContent = full ? "Match found" : "Waiting for players";
+    required("#platform-waiting-blurb").textContent = full
+      ? "Everyone’s here — countdown starting."
+      : `${players.length} of ${maxPlayers} fighters ready.`;
+    this.syncVersusRoster(players, maxPlayers);
+    this.setPane("waiting");
 
-    const left = local.spawnIndex <= opponent.spawnIndex ? local : opponent;
-    const right = local.spawnIndex <= opponent.spawnIndex ? opponent : local;
-
-    if (entrance === "p2-run") {
-      this.setVersusNames("…", local.name, "pending", "pending");
-      this.setPane("waiting");
-      await this.fighter?.enterAsPlayer2(local, opponent);
-      this.setVersusNames(left.name, right.name, "ready", "ready");
-      required("#platform-waiting-title").textContent = "Match found";
-      required("#platform-waiting-blurb").textContent = `${left.name} vs ${right.name}`;
+    const others = players.filter((player) => player.id !== local.id);
+    if (entrance === "join-run" && others.length > 0) {
+      await this.fighter?.enterAsJoiner(local, others, maxPlayers);
+      this.syncVersusRoster(players, maxPlayers);
       return;
     }
-
-    this.setVersusNames(left.name, right.name, "ready", "ready");
-    required("#platform-waiting-title").textContent = "Match found";
-    required("#platform-waiting-blurb").textContent = `${left.name} vs ${right.name}`;
-    this.setPane("waiting");
-    if (entrance === "p1-reveal" || local.spawnIndex === 0) {
-      this.fighter?.revealOpponent(opponent);
-    } else {
-      await this.fighter?.enterAsPlayer2(local, opponent);
+    if (entrance === "reveal" && others.length > 0) {
+      this.fighter?.setWaitingRoster(local, maxPlayers);
+      for (const other of others) this.fighter?.revealPlayer(other);
+      return;
     }
+    this.fighter?.setWaitingRoster(local, maxPlayers);
+    for (const other of others) this.fighter?.revealPlayer(other);
+  }
+
+  addWaitingPlayer(player: PlayerState): void {
+    if (!this.waitingRoster.some((entry) => entry.id === player.id)) {
+      this.waitingRoster = [...this.waitingRoster, player];
+    }
+    const local = this.waitingLocal;
+    if (!local) return;
+    void this.showRoster(local, this.waitingRoster, this.matchSize, "reveal");
+  }
+
+  removeWaitingPlayer(playerId: string): void {
+    this.waitingRoster = this.waitingRoster.filter((player) => player.id !== playerId);
+    const local = this.waitingLocal;
+    if (!local) {
+      this.showWaiting(undefined, this.matchSize);
+      return;
+    }
+    if (this.waitingRoster.length <= 1) {
+      this.showWaiting(local.spawnIndex, this.matchSize);
+      return;
+    }
+    void this.showRoster(local, this.waitingRoster, this.matchSize, "instant");
   }
 
   showCountdown(seconds: number): void {
@@ -431,32 +476,14 @@ export class Ui {
 
   setPreview(
     profile: UserProfile | null,
-    items: InventoryItem[] = this.previewItems,
     guestSession = this.guestSession,
   ): void {
     this.profile = profile;
-    this.previewItems = items;
     this.guestSession = Boolean(profile) && guestSession;
     this.fighter?.setAvatar(profile?.avatar ?? null);
     if (!profile) this.fighter?.playMove("idle");
     this.syncPreviewName();
     this.updatePlayerCard();
-  }
-
-  applyAvatar(avatar: AvatarConfiguration): void {
-    if (!this.profile) return;
-    this.profile = { ...this.profile, avatar: { ...avatar } };
-    this.fighter?.setAvatar(avatar);
-    this.setError(this.editError);
-    if (this.pane === "edit") {
-      this.renderLocker(
-        this.profile,
-        this.previewItems,
-        this.lockerInventory,
-        this.onEquipItem,
-        this.onUnequipItem,
-      );
-    }
   }
 
   updateHud(state: GameState): void {
@@ -465,14 +492,16 @@ export class Ui {
       (a, b) => a.spawnIndex - b.spawnIndex,
     );
     const key = players
-      .map((player) => `${player.id}:${player.name}:${player.lives}:${Math.round(player.damagePercent)}`)
+      .map((player) => `${player.id}:${player.name}:${player.lives}:${Math.round(player.damagePercent)}:${player.avatar?.baseAvatarId ?? ""}`)
       .join("|");
     if (key === this.hudKey) return;
     this.hudKey = key;
 
+    const maxPlayers = state.snapshot?.maxPlayers ?? players.length;
     for (const slot of this.hudSlots) {
-      const player = players[slot.index];
-      const { name, lives, percent } = slot;
+      const player = players.find((entry) => entry.spawnIndex === slot.index);
+      const { node, name, lives, percent } = slot;
+      node.hidden = slot.index >= maxPlayers;
       if (!name || !lives || !percent) continue;
       if (!player) {
         name.textContent = "—";
@@ -483,7 +512,10 @@ export class Ui {
       name.textContent = player.name;
       lives.textContent = "❤".repeat(Math.max(0, player.lives));
       percent.textContent = `${Math.round(player.damagePercent)}%`;
-      percent.setAttribute("style", `color:${slot.index === 0 ? "var(--p1)" : "var(--p2)"}`);
+      percent.setAttribute(
+        "style",
+        `color:${FIGHTER_COLOR_HEX[fighterColorFromId(player.avatar?.baseAvatarId)]}`,
+      );
     }
   }
 
@@ -535,6 +567,10 @@ export class Ui {
     this.saveAvatarButton.addEventListener("click", handler);
   }
 
+  onSelectColor(handler: (color: FighterColor) => void): void {
+    this.onColorSelected = handler;
+  }
+
   rememberName(explicit?: string): void {
     const name = explicit?.trim() || this.profile?.displayName || this.displayName();
     if (name && name !== "Fighter") localStorage.setItem("tituah:name", name);
@@ -566,26 +602,36 @@ export class Ui {
     required("#versus-cards").hidden = !active;
     if (!active) {
       required("#countdown-banner").hidden = true;
-      this.setVersusNames("—", "—", "empty", "empty");
+      this.waitingRoster = [];
+      this.waitingLocal = null;
+      this.syncVersusRoster([], 2);
+      const extra = document.querySelector("#extra-platforms");
+      if (extra instanceof HTMLElement) extra.hidden = true;
     }
     requestAnimationFrame(() => this.fighter?.layout());
   }
 
-  private setVersusNames(
-    left: string,
-    right: string,
-    leftState: "empty" | "ready" | "waiting" | "pending",
-    rightState: "empty" | "ready" | "waiting" | "pending",
-  ): void {
-    required("#versus-name-0").textContent = left;
-    required("#versus-name-1").textContent = right;
-    const card0 = required(".versus-card[data-slot='0']");
-    const card1 = required(".versus-card[data-slot='1']");
-    card0.dataset.state = leftState;
-    card1.dataset.state = rightState;
+  private syncVersusRoster(players: PlayerState[], maxPlayers: PlayerCount): void {
+    const cards = required("#versus-cards");
+    cards.dataset.size = String(maxPlayers);
+    const bySlot = new Map(players.map((player) => [player.spawnIndex, player]));
+    for (let slot = 0; slot < 4; slot += 1) {
+      const card = required(`.versus-card[data-slot='${slot}']`);
+      const name = required(`#versus-name-${slot}`);
+      card.hidden = slot >= maxPlayers;
+      if (slot >= maxPlayers) continue;
+      const player = bySlot.get(slot);
+      if (player) {
+        name.textContent = player.name;
+        card.dataset.state = "ready";
+      } else {
+        name.textContent = "Waiting…";
+        card.dataset.state = "waiting";
+      }
+    }
   }
 
-  private applyWaitingSlot(slot: 0 | 1): void {
+  private applyWaitingSlot(slot: number): void {
     const chip = required("#waiting-slot");
     chip.dataset.slot = String(slot);
     chip.textContent = `Joining as Player ${slot + 1}`;
@@ -597,24 +643,58 @@ export class Ui {
     chip.textContent = "Finding match…";
   }
 
-  private setEditPreviewSlot(slot: 0 | 1, animate = false): void {
-    // Stay on the edit screen — never leave a shattered options pane behind.
-    this.lobbyOptions.classList.remove("is-shattering");
-    for (const button of document.querySelectorAll<HTMLButtonElement>("[data-preview-slot]")) {
-      button.dataset.selected = String(Number(button.dataset.previewSlot) === slot);
-    }
-    if (!animate) {
-      this.editPreviewToken += 1;
-      this.fighter?.setSpawnPreview(slot);
+  private renderColorPicker(profile: UserProfile | null): void {
+    this.colorGrid.replaceChildren();
+    if (!profile) {
+      this.editorHint.hidden = false;
+      this.editorHint.textContent = "Play as guest or log in to edit and save your fighter.";
       return;
     }
-    // Slap first, then swap P1/P2 tint so the color change lands after the hit.
+
+    this.editorHint.hidden = true;
+    this.editorHint.textContent = "";
+    this.selectedColor = fighterColorFromId(profile.avatar.baseAvatarId);
+
+    for (const color of FIGHTER_COLORS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "color-swatch";
+      button.dataset.color = color;
+      button.style.setProperty("--swatch", FIGHTER_COLOR_HEX[color]);
+      button.setAttribute("aria-label", color);
+      button.title = color[0].toUpperCase() + color.slice(1);
+      this.colorGrid.append(button);
+    }
+    this.syncColorButtons();
+  }
+
+  private syncColorButtons(): void {
+    for (const button of this.colorGrid.querySelectorAll<HTMLButtonElement>("[data-color]")) {
+      const selected = button.dataset.color === this.selectedColor;
+      button.dataset.selected = String(selected);
+      button.setAttribute("aria-checked", String(selected));
+      button.setAttribute("role", "radio");
+    }
+  }
+
+  private async selectColor(color: FighterColor, animate = false): Promise<void> {
+    if (color === this.selectedColor) return;
+    this.selectedColor = color;
+    this.syncColorButtons();
+    const avatar = { ...(this.profile?.avatar ?? emptyAvatar()), baseAvatarId: color };
+    if (this.profile) this.profile = { ...this.profile, avatar };
+    this.onColorSelected(color);
+    if (!animate) {
+      this.fighter?.setAvatar(avatar);
+      return;
+    }
     const request = ++this.editPreviewToken;
-    void (async () => {
-      await this.fighter?.slapInPlace();
+    this.slapping = true;
+    await this.playJump(() => {
       if (request !== this.editPreviewToken) return;
-      this.fighter?.setSpawnPreview(slot);
-    })();
+      this.fighter?.setAvatar(avatar);
+    });
+    this.slapping = false;
   }
 
   private async slapThen(target: HTMLElement, handler: () => void, shatter = true): Promise<void> {
@@ -623,6 +703,13 @@ export class Ui {
     await this.playSlap(target, shatter);
     this.slapping = false;
     handler();
+  }
+
+  private async jumpThen(handler: () => void): Promise<void> {
+    if (this.slapping) return;
+    this.slapping = true;
+    await this.playJump(handler);
+    this.slapping = false;
   }
 
   private async shatterThen(target: HTMLElement, handler: () => void): Promise<void> {
@@ -648,6 +735,21 @@ export class Ui {
     target.classList.add("is-hit");
     if (shatter) await shatterElement(this.lobbyOptions, target);
     target.classList.remove("is-hit");
+  }
+
+  private async playJump(onApex?: () => void): Promise<void> {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      audio.play("jump");
+      onApex?.();
+      return;
+    }
+    if (this.fighter) {
+      await this.fighter.jump(onApex);
+      return;
+    }
+    audio.play("jump");
+    onApex?.();
   }
 
   private setPane(pane: LobbyPane): void {
@@ -693,54 +795,7 @@ export class Ui {
     this.menuKind.textContent = this.guestSession ? "Guest" : "Account";
     this.menuBlurb.textContent = this.guestSession
       ? "You’re playing as a guest. Sign in later if you want this record on an account."
-      : "Your name, stats, and cosmetics are saved to this account.";
-  }
-
-  private renderLocker(
-    profile: UserProfile | null,
-    items: InventoryItem[],
-    inventory: UserInventoryItem[],
-    onEquip: (itemId: string) => void,
-    onUnequip: (slot: ItemSlot) => void,
-  ): void {
-    const owned = new Set(inventory.map((entry) => entry.itemId));
-    const byId = new Map(items.map((item) => [item.id, item]));
-    this.lockerGrid.replaceChildren();
-
-    if (!profile) {
-      this.editorHint.hidden = false;
-      this.editorHint.textContent = "Play as guest or log in to edit and save your avatar.";
-      return;
-    }
-
-    this.editorHint.hidden = true;
-    this.editorHint.textContent = "";
-
-    for (const itemId of owned) {
-      const item = byId.get(itemId);
-      if (!item) continue;
-      const field = SLOT_TO_AVATAR_FIELD[item.slot];
-      const equipped = profile.avatar[field] === item.id;
-      const button = document.createElement("button");
-      button.className = "item-card";
-      button.type = "button";
-      button.dataset.equipped = equipped ? "true" : "false";
-      button.innerHTML = `<strong>${item.name}</strong><span>${item.slot} · ${item.rarity}</span>`;
-      button.addEventListener("click", () => {
-        if (equipped) {
-          const slot = AVATAR_FIELD_TO_SLOT[field];
-          if (slot) onUnequip(slot);
-          return;
-        }
-        onEquip(item.id);
-      });
-      this.lockerGrid.append(button);
-    }
-
-    if (owned.size === 0) {
-      this.editorHint.hidden = false;
-      this.editorHint.textContent = "No cosmetics yet. Default items are granted on first login.";
-    }
+      : "Your name, stats, and color are saved to this account.";
   }
 
   private syncPreviewName(): void {

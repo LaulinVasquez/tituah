@@ -1,13 +1,27 @@
 export const FIGHTER_SHEET_ID = "character-enhanced";
 
-export type FighterColorId =
-  | "base_01"
-  | "orange"
-  | "red"
-  | "blue"
-  | "green"
-  | "yellow"
-  | "purple";
+export const FIGHTER_COLORS = ["orange", "red", "blue", "green", "yellow", "purple"] as const;
+
+export type FighterColor = (typeof FIGHTER_COLORS)[number];
+
+export type FighterColorId = "base_01" | FighterColor;
+
+export const FIGHTER_COLOR_HEX: Record<FighterColor, string> = {
+  orange: "#ff7a45",
+  red: "#e4453a",
+  blue: "#5b9dff",
+  green: "#3ecf8e",
+  yellow: "#e8c44a",
+  purple: "#a56bff",
+};
+
+export function isFighterColor(value: string | null | undefined): value is FighterColor {
+  return value != null && (FIGHTER_COLORS as readonly string[]).includes(value);
+}
+
+export function fighterColorFromId(id: string | null | undefined): FighterColor {
+  return isFighterColor(id) ? id : "orange";
+}
 
 export const SPRITE_ASSET_IDS = {
   basicCap: "basic_cap_01",

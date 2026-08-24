@@ -24,6 +24,7 @@ export interface JoinMessage {
   name: string;
   stageId: string;
   idToken: string;
+  playerCount: number;
 }
 
 export interface ErrorMessage {
@@ -51,6 +52,7 @@ export interface WelcomeMessage {
   matchId: string;
   player: PlayerState;
   players: PlayerState[];
+  maxPlayers: number;
 }
 
 export interface PlayerJoinedMessage {

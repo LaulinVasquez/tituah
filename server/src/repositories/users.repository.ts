@@ -39,11 +39,12 @@ export class UsersRepository {
 
   async updateSafeProfile(
     uid: string,
-    updates: { displayName?: string; username?: string },
+    updates: { displayName?: string; username?: string; baseAvatarId?: string },
   ): Promise<void> {
     const next: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
     if (updates.displayName) next.displayName = updates.displayName.trim();
     if (updates.username) next.username = updates.username.trim();
+    if (updates.baseAvatarId) next["avatar.baseAvatarId"] = updates.baseAvatarId;
     await this.doc(uid).update(next);
   }
 

@@ -93,8 +93,8 @@ function compositeFrame(
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not composite fighter accessories");
 
-  const hue = colorHue(color);
   ctx.imageSmoothingEnabled = false;
+  const hue = colorHue(color);
   if (hue != null) ctx.filter = `hue-rotate(${hue}deg) saturate(120%)`;
   ctx.drawImage(
     drawable(sheet),

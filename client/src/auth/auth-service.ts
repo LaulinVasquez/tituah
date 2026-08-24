@@ -6,7 +6,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import type { UserProfile } from "@tituah/shared";
+import type { FighterColor, UserProfile } from "@tituah/shared";
 import { usersRepository } from "../repositories/users.repository.js";
 import { clientAuth } from "../services/firebase/firebaseClient.js";
 
@@ -92,6 +92,24 @@ export class AuthService {
       ...this.profile,
       displayName: partial.displayName?.trim() || this.profile.displayName,
     };
+  }
+
+  async persistAvatarColor(color: FighterColor): Promise<UserProfile> {
+    if (!this.profile) throw new Error("Not signed in");
+    this.profile = {
+      ...this.profile,
+      avatar: { ...this.profile.avatar, baseAvatarId: color },
+    };
+    const saved = await usersRepository.updateSafe({ baseAvatarId: color });
+    if (saved) this.profile = saved;
+    return this.profile;
+  }
+
+  async saveFighter(data: { displayName?: string; baseAvatarId?: string }): Promise<UserProfile> {
+    this.profile = (await usersRepository.updateSafe(data)) ?? this.profile;
+    this.emit();
+    if (!this.profile) throw new Error("Could not save fighter");
+    return this.profile;
   }
 
   private emit(): void {
