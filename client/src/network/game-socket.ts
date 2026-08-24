@@ -1,19 +1,23 @@
 import type { ClientMessage, ServerMessage } from "@tituah/shared";
 import { parseServerMessage } from "@tituah/shared";
-import { socketUrl } from "../config/runtime.js";
-
-const DEFAULT_URL = socketUrl();
+import { requireSocketUrl } from "../config/runtime.js";
 
 export class GameSocket {
   private socket: WebSocket | null = null;
   private generation = 0;
   private readonly url: string;
+  private readonly getUrl: () => string;
   private readonly listeners = new Set<(message: ServerMessage) => void>();
   private readonly openListeners = new Set<() => void>();
   private readonly closeListeners = new Set<() => void>();
 
-  constructor(url = DEFAULT_URL) {
+  constructor(url = "", getUrl: () => string = requireSocketUrl) {
     this.url = url;
+    this.getUrl = getUrl;
+  }
+
+  private currentUrl(): string {
+    return this.url || this.getUrl();
   }
 
   get connected(): boolean {
@@ -23,7 +27,7 @@ export class GameSocket {
   connect(): void {
     this.disconnect();
     const generation = this.generation;
-    const socket = new WebSocket(this.url);
+    const socket = new WebSocket(this.currentUrl());
     this.socket = socket;
 
     socket.addEventListener("open", () => {

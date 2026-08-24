@@ -1,4 +1,5 @@
 import { AUDIO_STORAGE_KEY, MUTE_STORAGE_KEY, SFX, SFX_BASE_PATH, SFX_IDS, type SfxId } from "./sfx-catalog.js";
+import { resolveAssetUrl } from "../config/runtime.js";
 
 export type AudioBus = "music" | "sfx";
 
@@ -214,7 +215,7 @@ export class AudioManager {
 
     for (const candidate of candidates) {
       try {
-        const response = await fetch(`${SFX_BASE_PATH}${candidate}`);
+        const response = await fetch(resolveAssetUrl(`${SFX_BASE_PATH}${candidate}`));
         if (!response.ok) continue;
         const data = await response.arrayBuffer();
         if (data.byteLength < 32) continue;

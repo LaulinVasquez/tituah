@@ -98,8 +98,13 @@ export class GameClient {
       }
     });
 
-    await this.renderer.init(canvas);
-    await this.ui.startFighterPreview();
+    await this.renderer.init(canvas).catch((error: unknown) => {
+      console.error("Failed to start game renderer", error);
+      throw error;
+    });
+    await this.ui.startFighterPreview().catch((error: unknown) => {
+      console.error("Failed to start lobby fighter preview", error);
+    });
     void audio.load();
     window.addEventListener("pointerdown", () => void audio.unlock());
     if (!authService.user) this.ui.showAuth();

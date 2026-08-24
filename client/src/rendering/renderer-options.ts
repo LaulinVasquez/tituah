@@ -15,8 +15,8 @@ export function pixiOptions(
     antialias: false,
     hello: false,
     roundPixels: true,
-    preference: "webgl",
-    powerPreference: "high-performance",
+    // Let Pixi choose the best supported renderer in WKWebView instead of
+    // hard-failing when WebGL is unavailable or limited on iOS.
     resolution: Math.min(dpr, mobile ? 1 : 1.5),
     autoDensity: true,
     ...extras,

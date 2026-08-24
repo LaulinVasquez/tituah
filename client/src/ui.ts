@@ -21,6 +21,7 @@ import {
 import { STAGE_VISUALS } from "./rendering/stages/stage-config.js";
 import { audio } from "./audio/audio-manager.js";
 import { shatterElement } from "./shatter-pane.js";
+import { prefersNativeTapHandling } from "./config/runtime.js";
 
 type LobbyPane = "landing" | "login" | "menu" | "waiting" | "result" | "edit";
 
@@ -90,6 +91,7 @@ export class Ui {
   private mixerOpen = false;
   private mixerAnchor: HTMLButtonElement | null = null;
   private exitConfirmOpen = false;
+  private readonly directTapHandling = prefersNativeTapHandling();
   private readonly hudSlots = [...this.hud.querySelectorAll<HTMLElement>(".fighter")].map((slot) => ({
     index: Number(slot.dataset.slot),
     node: slot,
@@ -144,64 +146,72 @@ export class Ui {
     this.selectStage(this.selectedStage);
     this.selectPlayerCount(this.selectedPlayerCount);
     this.bindMixer();
-    required("#lobby").addEventListener(
-      "click",
-      (event) => {
-        const button = (event.target as HTMLElement | null)?.closest("button");
-        if (!button || button.disabled || this.loading) return;
-        if (button.id === "audio-mute" || button.closest("#audio-mixer")) return;
-        if (button.dataset.slapReplay === "true") return;
-        // Auth buttons use their own listeners (slap + sign-in in authenticate).
-        if (
-          button.id === "choose-guest"
-          || button.id === "sign-in"
-          || button.id === "sign-up"
-        ) {
-          return;
-        }
-        // Color swatches handle their own in-place jump.
-        if (button.classList.contains("color-swatch")) return;
-        const demo = button.dataset.demoMove;
-        if (demo && isDemoMove(demo)) {
+    if (this.directTapHandling) {
+      for (const button of this.playerCard.querySelectorAll<HTMLButtonElement>("[data-demo-move]")) {
+        button.addEventListener("click", () => {
+          const demo = button.dataset.demoMove;
+          if (!demo || !isDemoMove(demo)) return;
+          this.setActiveMove(demo);
+          this.fighter?.playMove(demo);
+        });
+      }
+    } else {
+      required("#lobby").addEventListener(
+        "click",
+        (event) => {
+          const button = (event.target as HTMLElement | null)?.closest("button");
+          if (!button || button.disabled || this.loading) return;
+          if (button.id === "audio-mute" || button.closest("#audio-mixer")) return;
+          if (button.dataset.slapReplay === "true") return;
+          // Auth buttons use their own listeners (slap + sign-in in authenticate).
+          if (
+            button.id === "choose-guest"
+            || button.id === "sign-in"
+            || button.id === "sign-up"
+          ) {
+            return;
+          }
+          // Color swatches handle their own in-place jump.
+          if (button.classList.contains("color-swatch")) return;
+          const demo = button.dataset.demoMove;
+          if (demo && isDemoMove(demo)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (this.slapping) return;
+            this.setActiveMove(demo);
+            if (demo === "slap") {
+              void this.slapThen(button, () => undefined, false);
+              return;
+            }
+            this.fighter?.playMove(demo);
+            return;
+          }
           event.preventDefault();
           event.stopImmediatePropagation();
           if (this.slapping) return;
-          this.setActiveMove(demo);
-          // Slap the option itself — same directed slap as other lobby controls.
-          if (demo === "slap") {
-            void this.slapThen(button, () => undefined, false);
+          const replay = (): void => {
+            button.dataset.slapReplay = "true";
+            button.click();
+            delete button.dataset.slapReplay;
+          };
+          if (button.dataset.stage || button.dataset.players) {
+            void this.jumpThen(replay);
             return;
           }
-          this.fighter?.playMove(demo);
-          return;
-        }
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        if (this.slapping) return;
-        const replay = (): void => {
-          button.dataset.slapReplay = "true";
-          button.click();
-          delete button.dataset.slapReplay;
-        };
-        // Stay on this pane: jump instead of slap.
-        if (button.dataset.stage || button.dataset.players) {
-          void this.jumpThen(replay);
-          return;
-        }
-        // Edit fighter stays in the lobby overlay: slap, no shatter.
-        if (button.id === "edit-avatar" || button.id === "again" || button.id === "result-back") {
-          void this.slapThen(button, replay, false);
-          return;
-        }
-        const shatter = button.dataset.deferShatter !== "true";
-        if (button.dataset.skipSlap === "true") {
-          void this.shatterThen(button, replay);
-          return;
-        }
-        void this.slapThen(button, replay, shatter);
-      },
-      true,
-    );
+          if (button.id === "edit-avatar" || button.id === "again" || button.id === "result-back") {
+            void this.slapThen(button, replay, false);
+            return;
+          }
+          const shatter = button.dataset.deferShatter !== "true";
+          if (button.dataset.skipSlap === "true") {
+            void this.shatterThen(button, replay);
+            return;
+          }
+          void this.slapThen(button, replay, shatter);
+        },
+        true,
+      );
+    }
   }
 
   async startFighterPreview(): Promise<void> {
@@ -573,59 +583,59 @@ export class Ui {
   }
 
   onChooseGuest(handler: () => void): void {
-    this.chooseGuestButton.addEventListener("click", handler);
+    bindPress(this.chooseGuestButton, handler, this.directTapHandling);
   }
 
   onChooseLogin(handler: () => void): void {
-    this.chooseLoginButton.addEventListener("click", handler);
+    bindPress(this.chooseLoginButton, handler, this.directTapHandling);
   }
 
   onSignIn(handler: () => void): void {
-    this.signInButton.addEventListener("click", handler);
+    bindPress(this.signInButton, handler, this.directTapHandling);
   }
 
   onSignUp(handler: () => void): void {
-    this.signUpButton.addEventListener("click", handler);
+    bindPress(this.signUpButton, handler, this.directTapHandling);
   }
 
   onBackToLanding(handler: () => void): void {
-    required("#back-login", HTMLButtonElement).addEventListener("click", handler);
+    bindPress(required("#back-login", HTMLButtonElement), handler, this.directTapHandling);
   }
 
   onBackFromEdit(handler: () => void): void {
-    required("#back-edit", HTMLButtonElement).addEventListener("click", handler);
+    bindPress(required("#back-edit", HTMLButtonElement), handler, this.directTapHandling);
   }
 
   onJoin(handler: () => void): void {
-    this.joinButton.addEventListener("click", handler);
+    bindPress(this.joinButton, handler, this.directTapHandling);
   }
 
   onCancelWait(handler: () => void): void {
-    this.cancelWaitButton.addEventListener("click", handler);
+    bindPress(this.cancelWaitButton, handler, this.directTapHandling);
   }
 
   onAgain(handler: () => void): void {
-    this.againButton.addEventListener("click", handler);
+    bindPress(this.againButton, handler, this.directTapHandling);
   }
 
   onResultBack(handler: () => void): void {
-    required("#result-back", HTMLButtonElement).addEventListener("click", handler);
+    bindPress(required("#result-back", HTMLButtonElement), handler, this.directTapHandling);
   }
 
   onExitMatch(handler: () => void): void {
-    required("#exit-match", HTMLButtonElement).addEventListener("click", handler);
+    bindPress(required("#exit-match", HTMLButtonElement), handler, this.directTapHandling);
   }
 
   onSignOut(handler: () => void): void {
-    this.signOutButton.addEventListener("click", handler);
+    bindPress(this.signOutButton, handler, this.directTapHandling);
   }
 
   onEditAvatar(handler: () => void): void {
-    this.editButton.addEventListener("click", handler);
+    bindPress(this.editButton, handler, this.directTapHandling);
   }
 
   onSaveAvatar(handler: () => void): void {
-    this.saveAvatarButton.addEventListener("click", handler);
+    bindPress(this.saveAvatarButton, handler, this.directTapHandling);
   }
 
   onSelectColor(handler: (color: FighterColor) => void): void {
@@ -1213,4 +1223,24 @@ function required(selector: string, type?: typeof HTMLElement): HTMLElement {
     throw new Error(`Missing ${selector}`);
   }
   return node as HTMLElement;
+}
+
+function bindPress(
+  button: HTMLButtonElement,
+  handler: () => void,
+  includePointerUp: boolean,
+): void {
+  let lastPointerUp = 0;
+  if (includePointerUp) {
+    button.addEventListener("pointerup", (event) => {
+      if (event.pointerType !== "touch") return;
+      event.preventDefault();
+      lastPointerUp = Date.now();
+      handler();
+    });
+  }
+  button.addEventListener("click", () => {
+    if (includePointerUp && Date.now() - lastPointerUp < 400) return;
+    handler();
+  });
 }

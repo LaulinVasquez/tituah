@@ -1,3 +1,7 @@
+import fighterSheetUrl from "../../../public/assets/characters/character-enhanced.png";
+import runningSheetUrl from "../../../public/assets/characters/running.png";
+import { resolveAssetUrl } from "../../config/runtime.js";
+
 export type FighterAnimation =
   | "idle"
   | "run"
@@ -129,6 +133,6 @@ export const FIGHTER_ANIMATIONS: Record<FighterAnimation, FighterAnimationDefini
   },
 };
 
-export const FIGHTER_SHEET_URL = "/assets/characters/character-enhanced.png";
-export const RUNNING_SHEET_URL = "/assets/characters/running.png";
+export const FIGHTER_SHEET_URL = resolveAssetUrl(fighterSheetUrl);
+export const RUNNING_SHEET_URL = resolveAssetUrl(runningSheetUrl);
 export const FIGHTER_VISUAL_HEIGHT = 106;
