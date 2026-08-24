@@ -195,8 +195,14 @@ body,
   pointer-events: none;
 }
 
-.hud-audio {
+.hud-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   pointer-events: auto;
+}
+
+.hud-audio {
   display: grid;
   place-items: center;
   width: 36px;
@@ -233,6 +239,15 @@ body,
 .hud-audio:hover,
 .hud-audio:focus-visible {
   color: var(--text);
+}
+
+.hud-exit {
+  color: rgba(255, 139, 122, 0.82);
+}
+
+.hud-exit:hover,
+.hud-exit:focus-visible {
+  color: #ff8b7a;
 }
 
 .audio-mixer {
@@ -297,6 +312,22 @@ body,
 
 .audio-mixer-row.is-off input[type="range"] {
   opacity: 0.4;
+}
+
+.exit-confirm-copy {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.exit-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.exit-confirm-actions button {
+  flex: 1;
 }
 
 .lobby-fighter-canvas {
@@ -486,7 +517,7 @@ button.ghost {
   transition: opacity 0.28s ease, filter 0.28s ease;
 }
 
-.lobby-character > :not(.character-stage-backdrop) {
+.lobby-character > :not(.character-stage-backdrop):not(.extra-platforms) {
   position: relative;
   z-index: 1;
 }
@@ -562,11 +593,28 @@ button.ghost {
 }
 
 .extra-platforms .character-platform {
+  width: 100%;
+  height: 14px;
+  flex-shrink: 0;
+  transform: none;
+}
+
+.podium-slot {
   position: absolute;
   top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   width: min(22%, 96px);
-  height: 14px;
   transform: translateX(-50%);
+}
+
+.podium-slot[hidden] {
+  display: none !important;
+}
+
+.podium-stand {
+  display: none;
 }
 
 .lobby.is-versus .player-card > .character-platform {
@@ -1038,8 +1086,138 @@ html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {
   min-height: min(420px, 70dvh);
 }
 
+.lobby.is-versus.is-result .lobby-character {
+  min-height: min(560px, 82dvh);
+}
+
 .lobby.is-versus .lobby-options {
   display: none !important;
+}
+
+.lobby.is-result .versus-cards {
+  display: none !important;
+}
+
+.lobby.is-result .extra-platforms {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: auto;
+  height: 140px;
+  z-index: 6;
+}
+
+.lobby.is-result .lobby-fighter-canvas {
+  z-index: 5;
+}
+
+.lobby.is-result .player-card {
+  z-index: 6;
+}
+
+.lobby.is-result .podium-slot {
+  top: auto;
+  width: min(26%, 128px);
+}
+
+.lobby.is-result .podium-stand {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  min-height: var(--podium-h, 24px);
+  padding: 6px 7px 8px;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  background: linear-gradient(#243044, #111827);
+  text-align: center;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.28);
+}
+
+.lobby.is-result .podium-slot[data-place="1"] {
+  --podium-h: 92px;
+}
+
+.lobby.is-result .podium-slot[data-place="1"] .podium-stand {
+  border-color: rgba(245, 197, 66, 0.55);
+  background: linear-gradient(#3a3118, #1a1408);
+}
+
+.lobby.is-result .podium-slot[data-place="1"] .podium-place {
+  color: #f5c542;
+}
+
+.lobby.is-result .podium-slot[data-place="2"] {
+  --podium-h: 62px;
+}
+
+.lobby.is-result .podium-slot[data-place="2"] .podium-stand {
+  border-color: rgba(186, 198, 214, 0.5);
+  background: linear-gradient(#2a3344, #151b24);
+}
+
+.lobby.is-result .podium-slot[data-place="2"] .podium-place {
+  color: #d5dee8;
+}
+
+.lobby.is-result .podium-slot[data-place="3"] {
+  --podium-h: 40px;
+}
+
+.lobby.is-result .podium-slot[data-place="3"] .podium-stand {
+  border-color: rgba(196, 124, 72, 0.5);
+  background: linear-gradient(#3a2418, #1a120c);
+}
+
+.lobby.is-result .podium-slot[data-place="3"] .podium-place {
+  color: #e0a36a;
+}
+
+.lobby.is-result .podium-slot[data-place="4"] {
+  --podium-h: 24px;
+}
+
+.lobby.is-result .podium-slot[data-place="4"] .podium-place {
+  color: var(--muted);
+}
+
+.podium-place {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.podium-name {
+  font-size: 12px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podium-status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.podium-slot[data-status="ready"] .podium-status {
+  color: #7dffb3;
+}
+
+.podium-slot[data-status="pending"] .podium-status {
+  color: #ffb86b;
+}
+
+.podium-slot[data-status="left"] .podium-status,
+.podium-slot[data-status="left"] .podium-name {
+  color: var(--muted);
+  font-style: italic;
+  font-weight: 600;
 }
 
 .lobby.is-seeking .character-platform {
@@ -1089,9 +1267,34 @@ html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {
   text-align: center;
 }
 
+.player-card.is-result {
+  border-top-width: 1px;
+  border-top-color: var(--line);
+  padding: 8px 10px;
+  margin-top: 0;
+  border-radius: 12px;
+  text-align: center;
+}
+
 .player-card.is-waiting .platform-cancel {
   margin-top: 14px;
   width: 100%;
+}
+
+.player-card.is-result .platform-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+  margin: 0;
+  width: 100%;
+}
+
+.player-card.is-result .platform-actions button {
+  flex: 1;
+  width: auto;
+  margin: 0;
+  min-height: 36px;
 }
 
 .versus-cards[hidden] {
@@ -1200,6 +1403,49 @@ html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {
   pointer-events: none;
 }
 
+.result-banner {
+  position: absolute;
+  left: 50%;
+  top: 6%;
+  z-index: 7;
+  transform: translateX(-50%);
+  width: min(92%, 440px);
+  padding: 14px 20px;
+  border-radius: 16px;
+  background: rgba(7, 10, 18, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+.result-outcome {
+  margin: 0 0 6px;
+  font-size: clamp(28px, 4.2vw, 42px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+}
+
+.result-banner[data-outcome="win"] .result-outcome {
+  color: #7dffb3;
+}
+
+.result-banner[data-outcome="lose"] .result-outcome {
+  color: #ff8b7a;
+}
+
+.result-banner[data-outcome="draw"] .result-outcome {
+  color: var(--text);
+}
+
+.result-subline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .countdown-readout {
   margin: 8px 0 0;
   color: var(--accent);
@@ -1211,5 +1457,9 @@ html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {
 @media (max-width: 720px) {
   .lobby.is-versus .lobby-character {
     min-height: min(360px, 58dvh);
+  }
+
+  .lobby.is-versus.is-result .lobby-character {
+    min-height: min(460px, 70dvh);
   }
 }

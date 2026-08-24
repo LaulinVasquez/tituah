@@ -40,6 +40,9 @@ export class MessageHandler {
       case "attack_release":
         this.matches.releaseAttack(session);
         break;
+      case "ready":
+        this.matches.ready(session);
+        break;
     }
   }
 }

@@ -50,6 +50,7 @@ export class FighterSprite extends Container {
   private hitDirection = 1;
   private hitStrength = 1;
   private koUntil = 0;
+  private koHoldFrame = false;
   private hiddenUntil = 0;
   private colorKey = "";
   private appearanceCacheKey = "";
@@ -78,7 +79,8 @@ export class FighterSprite extends Container {
     this.setAnimation("hit", time, true);
   }
 
-  showKo(time: number): void {
+  showKo(time: number, holdLastFrame = false): void {
+    this.koHoldFrame = holdLastFrame;
     this.koUntil = Math.max(this.koUntil, time + KO_DURATION);
     this.setAnimation("ko", time, true);
   }
@@ -108,6 +110,7 @@ export class FighterSprite extends Container {
   resetForMatch(): void {
     this.hiddenUntil = 0;
     this.koUntil = 0;
+    this.koHoldFrame = false;
     this.hitUntil = 0;
     this.hitStartedAt = 0;
     this.animationStartedAt = 0;
@@ -140,12 +143,13 @@ export class FighterSprite extends Container {
       + (player.attackState.type === "active" ? 1_000 : 0)
       + (time < this.hitUntil ? 1_100 : 0);
     this.alpha = player.invulnerableUntil > time && Math.floor(time * 12) % 2 === 0 ? 0.35 : 1;
-    this.visible = time >= this.hiddenUntil && (player.lives > 0 || time < this.koUntil);
+    this.visible = time >= this.hiddenUntil
+      && (player.lives > 0 || time < this.koUntil || this.koHoldFrame);
     this.wasGrounded = player.grounded;
   }
 
   private chooseAnimation(player: PlayerState, time: number): FighterAnimation {
-    if (time < this.koUntil) return "ko";
+    if (this.koHoldFrame || time < this.koUntil) return "ko";
     if (time < this.hitUntil) return "hit";
     if (player.attackState.type === "charging") return "slapCharge";
     if (player.attackState.type === "active") return "slapAttack";

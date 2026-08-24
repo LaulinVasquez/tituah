@@ -33,6 +33,7 @@ export class GameClient {
   private lastFrame = performance.now();
   private localTime = 0;
   private seekingMatch = false;
+  private inRoom = false;
   private colorSave: Promise<void> = Promise.resolve();
 
   async start(canvas: HTMLCanvasElement): Promise<void> {
@@ -50,11 +51,14 @@ export class GameClient {
     });
     this.socket.onClose(() => {
       if (this.state.snapshot?.status === "playing") {
+        this.inRoom = false;
+        this.seekingMatch = false;
         this.ui.showMenu(authService.profile);
         return;
       }
-      if (this.seekingMatch && this.ui.currentPane === "waiting") {
+      if (this.seekingMatch || this.inRoom) {
         this.seekingMatch = false;
+        this.inRoom = false;
         this.ui.showMenu(authService.profile, "Connection closed.");
       }
     });
@@ -66,8 +70,10 @@ export class GameClient {
     this.ui.onSignUp(() => void this.authenticate("up", this.ui.signUpButton));
     this.ui.onSignOut(() => void this.signOut());
     this.ui.onJoin(() => void this.connect());
-    this.ui.onCancelWait(() => this.cancelWait());
-    this.ui.onAgain(() => void this.connect());
+    this.ui.onCancelWait(() => this.leaveRoom());
+    this.ui.onAgain(() => this.readyUp());
+    this.ui.onResultBack(() => this.leaveRoom());
+    this.ui.onExitMatch(() => this.leaveRoom());
     this.ui.onEditAvatar(() => void this.openEditor());
     this.ui.onSaveAvatar(() => void this.saveFighter());
     this.ui.onSelectColor((color) => this.persistColor(color));
@@ -126,16 +132,24 @@ export class GameClient {
       this.socket.connect();
     } catch (error) {
       this.seekingMatch = false;
+      this.inRoom = false;
       this.ui.setLoading(false);
       this.ui.showMenu(authService.profile, messageOf(error));
     }
   }
 
-  private cancelWait(): void {
-    if (!this.seekingMatch) return;
+  private leaveRoom(): void {
+    this.input.reset();
     this.seekingMatch = false;
+    this.inRoom = false;
     this.socket.disconnect();
     this.ui.showMenu(authService.profile);
+  }
+
+  private readyUp(): void {
+    if (!this.inRoom || !this.socket.connected) return;
+    this.ui.markLocalReady();
+    this.socket.send({ type: "ready" });
   }
 
   private async sendJoin(): Promise<void> {
@@ -152,6 +166,7 @@ export class GameClient {
       });
     } catch (error) {
       this.seekingMatch = false;
+      this.inRoom = false;
       if (authService.profile) this.ui.showMenu(authService.profile, messageOf(error));
       else this.ui.showAuth(messageOf(error));
     }
@@ -181,6 +196,7 @@ export class GameClient {
 
   private async signOut(): Promise<void> {
     this.seekingMatch = false;
+    this.inRoom = false;
     this.socket.disconnect();
     await authService.signOut();
     this.ui.setPreview(null);
@@ -235,6 +251,7 @@ export class GameClient {
   private onServerMessage(message: ServerMessage): void {
     if (message.type === "error") {
       this.seekingMatch = false;
+      this.inRoom = false;
       this.socket.disconnect();
       this.ui.showMenu(authService.profile, message.message ?? "Could not join match.");
       return;
@@ -249,7 +266,19 @@ export class GameClient {
     }
     if (message.type === "welcome") {
       if (!this.seekingMatch) return;
+      this.inRoom = true;
       const maxPlayers = parsePlayerCount(message.maxPlayers);
+      if (message.rematch) {
+        this.ui.showResult(
+          message.winnerId,
+          message.player,
+          message.players,
+          maxPlayers,
+          message.readyIds,
+          message.placements ?? {},
+        );
+        return;
+      }
       const others = message.players.filter((player) => player.id !== message.playerId);
       if (others.length > 0) {
         void this.ui.showRoster(message.player, message.players, maxPlayers, "join-run");
@@ -258,20 +287,30 @@ export class GameClient {
       }
     }
     if (message.type === "player_joined") {
-      if (!this.seekingMatch) return;
-      this.ui.addWaitingPlayer(message.player);
+      if (this.state.playing()) return;
+      if (!this.inRoom && !this.seekingMatch) return;
+      this.ui.addWaitingPlayer(message.player, message.readyIds);
     }
     if (message.type === "player_left") {
-      if (!this.seekingMatch) return;
+      if (this.state.playing()) return;
+      if (!this.inRoom && !this.seekingMatch) return;
       this.ui.removeWaitingPlayer(message.playerId);
     }
+    if (message.type === "player_ready") {
+      if (this.state.playing()) return;
+      if (!this.inRoom && !this.seekingMatch) return;
+      this.ui.setReadyIds(message.readyIds);
+    }
     if (message.type === "match_countdown") {
-      if (!this.seekingMatch) return;
+      if (this.state.playing()) return;
+      if (!this.inRoom && !this.seekingMatch) return;
       this.ui.showCountdown(message.seconds);
       sfx.countdown(message.seconds);
     }
     if (message.type === "match_started") {
+      this.input.reset();
       this.seekingMatch = false;
+      this.inRoom = true;
       sfx.reset();
       sfx.fight();
       this.renderer.setStage(message.snapshot.stageId);
@@ -292,20 +331,28 @@ export class GameClient {
       if (reconciled) this.state.predicted = reconciled;
     }
     if (message.type === "match_ended") {
+      this.input.reset();
       // #region agent log
       fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'A',location:'game-client.ts:match_ended',message:'match ended',data:{localTime:this.localTime,snapshotTime:this.state.snapshot?.time ?? null,winnerId:this.state.winnerId,playerIds:(this.state.snapshot?.players ?? []).map((p)=>p.id)},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
-      for (const player of this.state.snapshot?.players ?? []) {
-        if (player.id !== this.state.winnerId) {
-          this.renderer.showVoidDeath(player.id, this.localTime);
-        }
-      }
       sfx.ko();
       audio.stop("run");
-      const winner = this.state.winnerId
-        ? this.state.names.get(this.state.winnerId) ?? "Someone"
-        : "Nobody";
-      this.ui.showResult(`${winner} wins`);
+      this.inRoom = true;
+      this.seekingMatch = true;
+      const players = message.players.length > 0 ? message.players : this.state.snapshot?.players ?? [];
+      for (const player of players) {
+        this.state.addRemoteName(player.id, player.name);
+      }
+      const localId = this.state.localPlayerId;
+      const local = players.find((player) => player.id === localId) ?? null;
+      this.ui.showResult(
+        this.state.winnerId,
+        local,
+        players,
+        parsePlayerCount(message.maxPlayers || this.state.snapshot?.maxPlayers),
+        [],
+        message.placements ?? {},
+      );
       void authService.refreshProfile();
     }
   }

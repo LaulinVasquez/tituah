@@ -44,6 +44,8 @@ export class MessageHandler {
         break;
       case "match_countdown":
         break;
+      case "player_ready":
+        break;
       case "error":
         break;
     }

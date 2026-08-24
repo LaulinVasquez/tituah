@@ -82,6 +82,10 @@ export class Match {
   private readonly pendingAttackReleases = new Set<string>();
   private readonly activeHitboxes: ActiveHitbox[] = [];
   private readonly combat = new Map<string, CombatStats>();
+  private readonly readyPlayerIds = new Set<string>();
+  private readonly eliminatedAt = new Map<string, number>();
+  placements: Record<string, number> = {};
+  private rematchOpen = false;
   private readonly emit: MatchEmitter;
   private readonly lifecycle: MatchLifecycle;
 
@@ -137,7 +141,53 @@ export class Match {
       damageTaken: 0,
       lastAttackerId: null,
     });
+    this.readyPlayerIds.add(id);
     return player;
+  }
+
+  get rematch(): boolean {
+    return this.rematchOpen;
+  }
+
+  readyIds(): string[] {
+    return [...this.readyPlayerIds];
+  }
+
+  canStart(): boolean {
+    if (this.status !== "waiting" || this.players.size < this.maxPlayers) return false;
+    for (const id of this.players.keys()) {
+      if (!this.readyPlayerIds.has(id)) return false;
+    }
+    return true;
+  }
+
+  markReady(id: string): boolean {
+    if (this.status !== "waiting" || !this.players.has(id)) return false;
+    this.readyPlayerIds.add(id);
+    return true;
+  }
+
+  beginRematch(): void {
+    this.status = "waiting";
+    this.rematchOpen = true;
+    this.readyPlayerIds.clear();
+    this.projectiles.length = 0;
+    this.activeHitboxes.length = 0;
+    this.resetPlayersToSpawns();
+  }
+
+  resetToMatchmaking(): void {
+    if (!this.rematchOpen) return;
+    this.rematchOpen = false;
+    this.winnerId = null;
+    this.placements = {};
+    this.readyPlayerIds.clear();
+    for (const id of this.players.keys()) {
+      this.readyPlayerIds.add(id);
+    }
+    if (this.status === "countdown") {
+      this.cancelCountdown();
+    }
   }
 
   removePlayer(id: string): void {
@@ -146,6 +196,7 @@ export class Match {
     this.previousInputs.delete(id);
     delete this.scores[id];
     this.combat.delete(id);
+    this.readyPlayerIds.delete(id);
     if (this.status === "countdown") {
       this.cancelCountdown();
       return;
@@ -201,8 +252,24 @@ export class Match {
     this.countdownSeconds = null;
     this.countdownAccum = 0;
     this.status = "playing";
+    this.rematchOpen = false;
+    this.winnerId = null;
     this.tick = 0;
     this.time = 0;
+    this.projectiles.length = 0;
+    this.activeHitboxes.length = 0;
+    this.readyPlayerIds.clear();
+    this.eliminatedAt.clear();
+    this.placements = {};
+    for (const id of this.players.keys()) {
+      this.combat.set(id, {
+        knockouts: 0,
+        deaths: 0,
+        damageDealt: 0,
+        damageTaken: 0,
+        lastAttackerId: null,
+      });
+    }
     this.resetPlayersToSpawns();
     this.lifecycle.onStart?.(this);
     const snapshot = this.createSnapshot();
@@ -428,6 +495,7 @@ export class Match {
     player.health = PLAYER_MAX_HEALTH;
 
     if (player.lives <= 0) {
+      if (!this.eliminatedAt.has(player.id)) this.eliminatedAt.set(player.id, this.time);
       player.position.x = this.map.spawns[player.spawnIndex]?.x ?? 0;
       player.position.y = this.map.blast.bottom + 200;
       return;
@@ -488,11 +556,32 @@ export class Match {
     if (winnerId) {
       this.scores[winnerId] = (this.scores[winnerId] ?? 0) + 1;
     }
+    this.placements = this.computePlacements(winnerId);
     this.emit(null, {
       type: "match_ended",
       winnerId,
       scores: { ...this.scores },
+      players: [...this.players.values()].map(clonePlayerState),
+      maxPlayers: this.maxPlayers,
+      placements: { ...this.placements },
     });
     this.lifecycle.onEnd?.(this);
+  }
+
+  private computePlacements(winnerId: string | null): Record<string, number> {
+    const ranked = [...this.players.values()].sort((a, b) => {
+      const score = (player: PlayerState): number => {
+        if (player.id === winnerId) return Number.POSITIVE_INFINITY;
+        return this.eliminatedAt.get(player.id) ?? Number.POSITIVE_INFINITY;
+      };
+      const delta = score(b) - score(a);
+      if (delta !== 0) return delta;
+      return a.spawnIndex - b.spawnIndex;
+    });
+    const placements: Record<string, number> = {};
+    ranked.forEach((player, index) => {
+      placements[player.id] = index + 1;
+    });
+    return placements;
   }
 }

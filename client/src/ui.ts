@@ -16,6 +16,7 @@ import type { GameState } from "./game/game-state.js";
 import {
   LobbyFighterPreview,
   type LobbyDemoMove,
+  type PodiumStand,
 } from "./rendering/lobby-fighter-preview.js";
 import { STAGE_VISUALS } from "./rendering/stages/stage-config.js";
 import { audio } from "./audio/audio-manager.js";
@@ -61,7 +62,9 @@ export class Ui {
   readonly resultTitle = required("#result-title");
   readonly muteButton = required("#audio-mute", HTMLButtonElement);
   readonly hudAudioButton = required("#hud-audio", HTMLButtonElement);
+  readonly hudExitButton = required("#hud-exit", HTMLButtonElement);
   readonly mixer = required("#audio-mixer");
+  readonly exitConfirm = required("#exit-confirm");
   readonly stageButtons = document.querySelectorAll<HTMLButtonElement>("[data-stage]");
   readonly playerCountButtons = document.querySelectorAll<HTMLButtonElement>("[data-players]");
 
@@ -80,9 +83,13 @@ export class Ui {
   private matchSize: PlayerCount = 2;
   private waitingRoster: PlayerState[] = [];
   private waitingLocal: PlayerState | null = null;
+  private rematchReadyIds: Set<string> | null = null;
+  private resultPlacements: Record<string, number> = {};
+  private resultWinnerId: string | null = null;
   private hudKey = "";
   private mixerOpen = false;
   private mixerAnchor: HTMLButtonElement | null = null;
+  private exitConfirmOpen = false;
   private readonly hudSlots = [...this.hud.querySelectorAll<HTMLElement>(".fighter")].map((slot) => ({
     index: Number(slot.dataset.slot),
     node: slot,
@@ -182,7 +189,7 @@ export class Ui {
           return;
         }
         // Edit fighter stays in the lobby overlay: slap, no shatter.
-        if (button.id === "edit-avatar") {
+        if (button.id === "edit-avatar" || button.id === "again" || button.id === "result-back") {
           void this.slapThen(button, replay, false);
           return;
         }
@@ -420,9 +427,13 @@ export class Ui {
     for (const other of others) this.fighter?.revealPlayer(other);
   }
 
-  addWaitingPlayer(player: PlayerState): void {
+  addWaitingPlayer(player: PlayerState, _readyIds?: string[]): void {
     if (!this.waitingRoster.some((entry) => entry.id === player.id)) {
       this.waitingRoster = [...this.waitingRoster, player];
+    }
+    if (this.pane === "result") {
+      this.showWaitingAfterLeave();
+      return;
     }
     const local = this.waitingLocal;
     if (!local) return;
@@ -431,6 +442,13 @@ export class Ui {
 
   removeWaitingPlayer(playerId: string): void {
     this.waitingRoster = this.waitingRoster.filter((player) => player.id !== playerId);
+    this.rematchReadyIds?.delete(playerId);
+    required("#countdown-banner").hidden = true;
+    required("#waiting-countdown").hidden = true;
+    if (this.pane === "result") {
+      this.showWaitingAfterLeave();
+      return;
+    }
     const local = this.waitingLocal;
     if (!local) {
       this.showWaiting(undefined, this.matchSize);
@@ -441,6 +459,17 @@ export class Ui {
       return;
     }
     void this.showRoster(local, this.waitingRoster, this.matchSize, "instant");
+  }
+
+  setReadyIds(readyIds: string[]): void {
+    this.rematchReadyIds = new Set(readyIds);
+    if (this.pane === "result") this.refreshRematch();
+  }
+
+  markLocalReady(): void {
+    if (!this.waitingLocal || !this.rematchReadyIds) return;
+    this.rematchReadyIds.add(this.waitingLocal.id);
+    this.refreshRematch();
   }
 
   showCountdown(seconds: number): void {
@@ -456,9 +485,15 @@ export class Ui {
     required("#platform-waiting-blurb").textContent = label;
     required("#waiting-solo").hidden = true;
     required("#waiting-versus").hidden = false;
+    if (this.pane === "result") {
+      this.hideResultBanner();
+      this.againButton.disabled = true;
+      this.againButton.textContent = "Ready";
+    }
   }
 
   showGame(): void {
+    this.hideResultBanner();
     this.setSeeking(false);
     this.setMatchmakingMode(false);
     this.fighter?.clearRoster();
@@ -467,11 +502,29 @@ export class Ui {
     this.hud.hidden = false;
   }
 
-  showResult(title: string): void {
+  showResult(
+    winnerId: string | null,
+    local?: PlayerState | null,
+    players: PlayerState[] = [],
+    maxPlayers: PlayerCount = this.matchSize,
+    readyIds: string[] = [],
+    placements: Record<string, number> = {},
+  ): void {
+    this.matchSize = maxPlayers;
+    this.waitingLocal = local ?? this.waitingLocal;
+    this.waitingRoster = players.length > 0 ? [...players] : this.waitingRoster;
+    this.rematchReadyIds = new Set(readyIds);
+    this.resultPlacements = { ...placements };
+    this.resultWinnerId = winnerId;
     this.setOverlay(true);
-    this.resultTitle.textContent = title;
+    this.hud.hidden = true;
+    this.setSeeking(false);
+    this.setMatchmakingMode(true);
+    this.setResultBanner(winnerId, local?.id ?? this.waitingLocal?.id ?? null);
+    required("#countdown-banner").hidden = true;
+    required("#waiting-countdown").hidden = true;
     this.setPane("result");
-    this.hud.hidden = false;
+    this.refreshRematch();
   }
 
   setPreview(
@@ -555,6 +608,14 @@ export class Ui {
     this.againButton.addEventListener("click", handler);
   }
 
+  onResultBack(handler: () => void): void {
+    required("#result-back", HTMLButtonElement).addEventListener("click", handler);
+  }
+
+  onExitMatch(handler: () => void): void {
+    required("#exit-match", HTMLButtonElement).addEventListener("click", handler);
+  }
+
   onSignOut(handler: () => void): void {
     this.signOutButton.addEventListener("click", handler);
   }
@@ -604,6 +665,9 @@ export class Ui {
       required("#countdown-banner").hidden = true;
       this.waitingRoster = [];
       this.waitingLocal = null;
+      this.rematchReadyIds = null;
+      this.resultPlacements = {};
+      this.resultWinnerId = null;
       this.syncVersusRoster([], 2);
       const extra = document.querySelector("#extra-platforms");
       if (extra instanceof HTMLElement) extra.hidden = true;
@@ -611,7 +675,96 @@ export class Ui {
     requestAnimationFrame(() => this.fighter?.layout());
   }
 
-  private syncVersusRoster(players: PlayerState[], maxPlayers: PlayerCount): void {
+  private showWaitingAfterLeave(): void {
+    this.hideResultBanner();
+    this.resultWinnerId = null;
+    this.rematchReadyIds = null;
+    this.resultPlacements = {};
+    this.againButton.disabled = false;
+    this.againButton.textContent = "Play again";
+
+    const local = this.waitingLocal;
+    if (!local) {
+      this.showWaiting(undefined, this.matchSize);
+      return;
+    }
+    if (this.waitingRoster.length <= 1) {
+      this.showWaiting(local.spawnIndex, this.matchSize);
+      return;
+    }
+    void this.showRoster(local, this.waitingRoster, this.matchSize, "instant");
+  }
+
+  private refreshRematch(): void {
+    const readyIds = this.rematchReadyIds ?? new Set<string>();
+    const stands = buildPodiumStands(
+      this.waitingRoster,
+      this.matchSize,
+      this.resultPlacements,
+      readyIds,
+    );
+    this.syncPodium(stands);
+    const local = this.waitingLocal;
+    if (local) {
+      requestAnimationFrame(() => {
+        this.fighter?.setRematchRoster(local, stands, this.matchSize, this.resultWinnerId);
+      });
+    }
+    this.updateResultCopy();
+  }
+
+  private syncPodium(stands: PodiumStand[]): void {
+    for (let slot = 0; slot < 4; slot += 1) {
+      const node = required(`.podium-slot[data-slot='${slot}']`);
+      const stand = stands[slot];
+      if (!stand) continue;
+      node.dataset.place = String(stand.place);
+      node.dataset.status = stand.status;
+      required(`#podium-place-${slot}`).textContent = placeLabel(stand.place);
+      if (stand.player) {
+        required(`#podium-name-${slot}`).textContent = stand.player.name;
+        required(`#podium-status-${slot}`).textContent = stand.status === "ready" ? "Ready" : "Not ready";
+      } else {
+        required(`#podium-name-${slot}`).textContent = "Waiting for player";
+        required(`#podium-status-${slot}`).textContent = "Player left";
+      }
+    }
+  }
+
+  private updateResultCopy(): void {
+    const readyIds = this.rematchReadyIds ?? new Set<string>();
+    const localReady = Boolean(this.waitingLocal && readyIds.has(this.waitingLocal.id));
+    this.againButton.disabled = localReady;
+    this.againButton.textContent = localReady ? "Ready" : "Play again";
+  }
+
+  private setResultBanner(winnerId: string | null, localId: string | null): void {
+    const banner = required("#result-banner");
+    const outcome = required("#result-outcome");
+    banner.hidden = false;
+    if (winnerId && localId && winnerId === localId) {
+      banner.dataset.outcome = "win";
+      outcome.textContent = "You win!!!";
+      return;
+    }
+    if (winnerId && localId) {
+      banner.dataset.outcome = "lose";
+      outcome.textContent = "You lose.";
+      return;
+    }
+    banner.dataset.outcome = "draw";
+    outcome.textContent = "Match over";
+  }
+
+  private hideResultBanner(): void {
+    required("#result-banner").hidden = true;
+  }
+
+  private syncVersusRoster(
+    players: PlayerState[],
+    maxPlayers: PlayerCount,
+    readyIds?: Set<string> | null,
+  ): void {
     const cards = required("#versus-cards");
     cards.dataset.size = String(maxPlayers);
     const bySlot = new Map(players.map((player) => [player.spawnIndex, player]));
@@ -621,12 +774,16 @@ export class Ui {
       card.hidden = slot >= maxPlayers;
       if (slot >= maxPlayers) continue;
       const player = bySlot.get(slot);
-      if (player) {
-        name.textContent = player.name;
-        card.dataset.state = "ready";
-      } else {
+      if (!player) {
         name.textContent = "Waiting…";
         card.dataset.state = "waiting";
+        continue;
+      }
+      name.textContent = player.name;
+      if (readyIds && !readyIds.has(player.id)) {
+        card.dataset.state = "pending";
+      } else {
+        card.dataset.state = "ready";
       }
     }
   }
@@ -758,10 +915,12 @@ export class Ui {
       required(`#pane-${name}`).hidden = name !== pane;
     }
     this.lobbyOptions.classList.remove("is-shattering");
+    this.lobby.classList.toggle("is-result", pane === "result");
     this.landingError.hidden = true;
     this.authError.hidden = true;
     this.menuError.hidden = true;
     this.editError.hidden = true;
+    if (pane !== "result") this.hideResultBanner();
     this.updatePlayerCard();
     requestAnimationFrame(() => this.fighter?.layout());
   }
@@ -776,13 +935,16 @@ export class Ui {
     const locked = !this.profile;
     const editing = this.pane === "edit";
     const waiting = this.pane === "waiting";
-    required("#player-card-locked").hidden = !locked || waiting;
-    required("#player-card-profile").hidden = locked || editing || waiting;
+    const result = this.pane === "result";
+    required("#player-card-locked").hidden = !locked || waiting || result;
+    required("#player-card-profile").hidden = locked || editing || waiting || result;
     required("#player-card-waiting").hidden = !waiting;
+    required("#player-card-result").hidden = !result;
     required("#player-card-moves").hidden = !editing;
-    this.playerCard.classList.toggle("is-locked", locked && !waiting);
+    this.playerCard.classList.toggle("is-locked", locked && !waiting && !result);
     this.playerCard.classList.toggle("is-moves", editing);
     this.playerCard.classList.toggle("is-waiting", waiting);
+    this.playerCard.classList.toggle("is-result", result);
     this.lobby.classList.toggle("is-signed-out", locked);
     if (!this.profile) {
       this.menuKind.textContent = "Ready";
@@ -825,6 +987,10 @@ export class Ui {
       event.stopPropagation();
       this.toggleMixer(this.hudAudioButton);
     });
+    this.hudExitButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.toggleExitConfirm();
+    });
     for (const button of this.mixer.querySelectorAll<HTMLButtonElement>("[data-audio-enabled]")) {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -847,16 +1013,32 @@ export class Ui {
       }
       event.stopPropagation();
     });
-    document.addEventListener("pointerdown", (event) => {
-      if (!this.mixerOpen) return;
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (this.mixer.contains(target) || this.muteButton.contains(target) || this.hudAudioButton.contains(target)) {
+    this.exitConfirm.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        this.closeExitConfirm();
         return;
       }
-      this.closeMixer();
+      event.stopPropagation();
     });
-    window.addEventListener("resize", () => this.placeMixer());
+    required("#exit-stay", HTMLButtonElement).addEventListener("click", () => this.closeExitConfirm());
+    document.addEventListener("pointerdown", (event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (this.mixerOpen) {
+        if (this.mixer.contains(target) || this.muteButton.contains(target) || this.hudAudioButton.contains(target)) {
+          return;
+        }
+        this.closeMixer();
+      }
+      if (this.exitConfirmOpen) {
+        if (this.exitConfirm.contains(target) || this.hudExitButton.contains(target)) return;
+        this.closeExitConfirm();
+      }
+    });
+    window.addEventListener("resize", () => {
+      this.placeMixer();
+      this.placeExitConfirm();
+    });
     audio.onMuteChange(() => this.syncMixer());
     this.syncMixer();
   }
@@ -870,6 +1052,7 @@ export class Ui {
   }
 
   private openMixer(anchor: HTMLButtonElement): void {
+    this.closeExitConfirm();
     this.mixerOpen = true;
     this.mixerAnchor = anchor;
     this.mixer.hidden = false;
@@ -885,6 +1068,28 @@ export class Ui {
     this.syncMixer();
   }
 
+  private toggleExitConfirm(): void {
+    if (this.exitConfirmOpen) {
+      this.closeExitConfirm();
+      return;
+    }
+    this.openExitConfirm();
+  }
+
+  private openExitConfirm(): void {
+    this.closeMixer();
+    this.exitConfirmOpen = true;
+    this.exitConfirm.hidden = false;
+    this.hudExitButton.setAttribute("aria-expanded", "true");
+    this.placeExitConfirm();
+  }
+
+  private closeExitConfirm(): void {
+    this.exitConfirmOpen = false;
+    this.exitConfirm.hidden = true;
+    this.hudExitButton.setAttribute("aria-expanded", "false");
+  }
+
   private placeMixer(): void {
     if (!this.mixerOpen || !this.mixerAnchor) return;
     const rect = this.mixerAnchor.getBoundingClientRect();
@@ -898,6 +1103,20 @@ export class Ui {
     if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - gap);
     this.mixer.style.left = `${Math.round(left)}px`;
     this.mixer.style.top = `${Math.round(top)}px`;
+  }
+
+  private placeExitConfirm(): void {
+    if (!this.exitConfirmOpen) return;
+    const rect = this.hudExitButton.getBoundingClientRect();
+    const width = this.exitConfirm.offsetWidth;
+    const height = this.exitConfirm.offsetHeight;
+    const gap = 8;
+    let left = rect.left + rect.width / 2 - width / 2;
+    let top = rect.bottom + gap;
+    left = Math.min(Math.max(8, left), window.innerWidth - width - 8);
+    if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - gap);
+    this.exitConfirm.style.left = `${Math.round(left)}px`;
+    this.exitConfirm.style.top = `${Math.round(top)}px`;
   }
 
   private syncMixer(): void {
@@ -936,6 +1155,7 @@ export class Ui {
 
   private setOverlay(visible: boolean): void {
     this.closeMixer();
+    this.closeExitConfirm();
     this.overlay.dataset.hidden = visible ? "false" : "true";
     this.fighter?.setActive(visible);
   }
@@ -943,6 +1163,46 @@ export class Ui {
 
 function isDemoMove(value: string): value is LobbyDemoMove {
   return DEMO_MOVES.has(value as LobbyDemoMove);
+}
+
+function placeLabel(place: number): string {
+  if (place === 1) return "1st";
+  if (place === 2) return "2nd";
+  if (place === 3) return "3rd";
+  return "4th";
+}
+
+function podiumPlaces(count: PlayerCount): number[] {
+  if (count <= 1) return [1];
+  if (count === 2) return [2, 1];
+  if (count === 3) return [2, 1, 3];
+  return [2, 1, 3, 4];
+}
+
+function buildPodiumStands(
+  players: PlayerState[],
+  maxPlayers: PlayerCount,
+  placements: Record<string, number>,
+  readyIds: Set<string>,
+): PodiumStand[] {
+  const byPlace = new Map<number, PlayerState>();
+  const unplaced: PlayerState[] = [];
+  for (const player of players) {
+    const place = placements[player.id];
+    if (place >= 1 && place <= maxPlayers && !byPlace.has(place)) byPlace.set(place, player);
+    else unplaced.push(player);
+  }
+  let nextJoiner = 0;
+  return podiumPlaces(maxPlayers).map((place) => {
+    const placed = byPlace.get(place) ?? null;
+    const player = placed ?? unplaced[nextJoiner++] ?? null;
+    if (!player) return { place, player: null, status: "left" };
+    return {
+      place,
+      player,
+      status: readyIds.has(player.id) ? "ready" : "pending",
+    };
+  });
 }
 
 function required(selector: string): HTMLElement;

@@ -3,6 +3,7 @@ import type { Vec2 } from "./math.js";
 
 export type ClientMessage =
   | JoinMessage
+  | ReadyMessage
   | ClientInputMessage
   | AttackStartMessage
   | AttackReleaseMessage;
@@ -11,6 +12,7 @@ export type ServerMessage =
   | WelcomeMessage
   | PlayerJoinedMessage
   | PlayerLeftMessage
+  | PlayerReadyMessage
   | MatchCountdownMessage
   | MatchStartedMessage
   | ServerSnapshot
@@ -46,6 +48,10 @@ export interface AttackReleaseMessage {
   type: "attack_release";
 }
 
+export interface ReadyMessage {
+  type: "ready";
+}
+
 export interface WelcomeMessage {
   type: "welcome";
   playerId: string;
@@ -53,6 +59,10 @@ export interface WelcomeMessage {
   player: PlayerState;
   players: PlayerState[];
   maxPlayers: number;
+  readyIds: string[];
+  rematch: boolean;
+  winnerId: string | null;
+  placements: Record<string, number>;
 }
 
 export interface PlayerJoinedMessage {
@@ -60,6 +70,13 @@ export interface PlayerJoinedMessage {
   playerId: string;
   name: string;
   player: PlayerState;
+  readyIds: string[];
+}
+
+export interface PlayerReadyMessage {
+  type: "player_ready";
+  playerId: string;
+  readyIds: string[];
 }
 
 export interface PlayerLeftMessage {
@@ -105,6 +122,9 @@ export interface MatchEndedMessage {
   type: "match_ended";
   winnerId: string | null;
   scores: Record<string, number>;
+  players: PlayerState[];
+  maxPlayers: number;
+  placements: Record<string, number>;
 }
 
 export function parseClientMessage(raw: string): ClientMessage | null {

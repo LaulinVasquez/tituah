@@ -66,6 +66,7 @@ export class MatchManager {
     this.sessionsByPlayer.set(player.id, session);
 
     const roster = [...match.players.values()];
+    const readyIds = match.readyIds();
     session.socket.send(
       JSON.stringify({
         type: "welcome",
@@ -74,6 +75,10 @@ export class MatchManager {
         player,
         players: roster,
         maxPlayers: match.maxPlayers,
+        readyIds,
+        rematch: match.rematch,
+        winnerId: match.winnerId,
+        placements: { ...match.placements },
       } satisfies ServerMessage),
     );
 
@@ -82,12 +87,10 @@ export class MatchManager {
       playerId: player.id,
       name: player.name,
       player,
+      readyIds,
     });
 
-    if (match.playerCount >= match.maxPlayers) {
-      this.removeFromWaiting(match);
-      match.beginCountdown();
-    }
+    this.tryStart(match);
 
     return match;
   }
@@ -99,6 +102,9 @@ export class MatchManager {
     if (!match) return;
 
     match.removePlayer(session.playerId);
+    if (match.status === "waiting" && match.rematch) {
+      match.resetToMatchmaking();
+    }
     this.broadcast(match, session.playerId, {
       type: "player_left",
       playerId: session.playerId,
@@ -130,6 +136,18 @@ export class MatchManager {
     const match = this.getSessionMatch(session);
     if (!match || !session.playerId) return;
     match.releaseAttack(session.playerId);
+  }
+
+  ready(session: Session): void {
+    const match = this.getSessionMatch(session);
+    if (!match || !session.playerId) return;
+    if (!match.markReady(session.playerId)) return;
+    this.broadcast(match, null, {
+      type: "player_ready",
+      playerId: session.playerId,
+      readyIds: match.readyIds(),
+    });
+    this.tryStart(match);
   }
 
   private getSessionMatch(session: Session): Match | null {
@@ -177,6 +195,10 @@ export class MatchManager {
             durationMs: Math.round(ended.time * 1000),
             results: ended.combatResults(),
           }).catch((error) => console.error("Failed to persist match result", error));
+          ended.beginRematch();
+          if (ended.playerCount > 0 && ended.playerCount < ended.maxPlayers) {
+            this.ensureWaiting(ended);
+          }
         },
       },
       playerCount,
@@ -204,6 +226,12 @@ export class MatchManager {
       rooms.push(match);
       this.waitingByRoom.set(key, rooms);
     }
+  }
+
+  private tryStart(match: Match): void {
+    if (!match.canStart()) return;
+    this.removeFromWaiting(match);
+    match.beginCountdown();
   }
 
   private send(match: Match, playerId: string | null, message: ServerMessage): void {

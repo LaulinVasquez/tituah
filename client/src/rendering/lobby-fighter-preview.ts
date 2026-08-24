@@ -21,6 +21,14 @@ const REVEAL_MS = 420;
 
 export type LobbyDemoMove = "idle" | "run" | "jump" | "slap" | "hit";
 
+export type PodiumStatus = "ready" | "pending" | "left";
+
+export type PodiumStand = {
+  place: number;
+  player: PlayerState | null;
+  status: PodiumStatus;
+};
+
 type LayoutMode = "solo" | "matchmaking";
 
 export class LobbyFighterPreview {
@@ -31,6 +39,7 @@ export class LobbyFighterPreview {
   private readonly slotPlayers: (PlayerState | null)[] = [null, null, null, null];
   private readonly extraPlatforms: HTMLElement[];
   private readonly extraPlatformRoot: HTMLElement | null;
+  private readonly playerCard: HTMLElement | null;
   private time = 0;
   private scale = 3;
   private ready = false;
@@ -40,6 +49,12 @@ export class LobbyFighterPreview {
   private maxSlots: PlayerCount = 2;
   private localSlot = 0;
   private ghostSlots = new Set<number>();
+  private blurredSlots = new Set<number>();
+  private podiumMode = false;
+  private podiumKoShown = false;
+  private podiumWinnerJump = false;
+  private podiumLoserKo = false;
+  private podiumInputBound = false;
   private animating = false;
   private demoToken = 0;
   private resizeObserver?: ResizeObserver;
@@ -51,7 +66,8 @@ export class LobbyFighterPreview {
     private readonly platform: HTMLElement,
   ) {
     this.extraPlatformRoot = document.querySelector("#extra-platforms");
-    this.extraPlatforms = [...(this.extraPlatformRoot?.querySelectorAll<HTMLElement>(".character-platform") ?? [])];
+    this.extraPlatforms = [...(this.extraPlatformRoot?.querySelectorAll<HTMLElement>(".podium-slot") ?? [])];
+    this.playerCard = document.querySelector("#player-card");
   }
 
   private get localFighter(): FighterSprite {
@@ -122,7 +138,11 @@ export class LobbyFighterPreview {
         if (this.ghostSlots.has(slot)) {
           fighter.alpha = 0.38;
           fighter.filters = [this.ghostBlur];
+        } else if (this.blurredSlots.has(slot)) {
+          fighter.alpha = 0.5;
+          fighter.filters = [this.ghostBlur];
         } else {
+          fighter.alpha = 1;
           fighter.filters = null;
         }
       }
@@ -132,6 +152,57 @@ export class LobbyFighterPreview {
     this.resizeObserver.observe(this.stage);
     this.resizeObserver.observe(this.platform);
     window.visualViewport?.addEventListener("resize", () => this.layout());
+    this.onPodiumKeyDown = this.onPodiumKeyDown.bind(this);
+    this.onPodiumPointerDown = this.onPodiumPointerDown.bind(this);
+  }
+
+  private onPodiumKeyDown(event: KeyboardEvent): void {
+    if (!this.podiumWinnerJump && !this.podiumLoserKo) return;
+    if (event.code !== "Space" && event.code !== "ArrowUp") return;
+    event.preventDefault();
+    this.handlePodiumAction();
+  }
+
+  private onPodiumPointerDown(event: PointerEvent): void {
+    if (!this.podiumWinnerJump && !this.podiumLoserKo) return;
+    if ((event.target as HTMLElement).closest("button")) return;
+    this.handlePodiumAction();
+  }
+
+  private handlePodiumAction(): void {
+    if (this.podiumWinnerJump) {
+      void this.jump();
+      return;
+    }
+    if (this.podiumLoserKo) this.replayPodiumKo();
+  }
+
+  private replayPodiumKo(): void {
+    const fighter = this.fighters[this.localSlot];
+    if (!fighter) return;
+    fighter.showKo(this.time, true);
+    audio.play("ko");
+  }
+
+  private bindPodiumInput(): void {
+    if (this.podiumInputBound) return;
+    this.podiumInputBound = true;
+    window.addEventListener("keydown", this.onPodiumKeyDown);
+    this.lobby.addEventListener("pointerdown", this.onPodiumPointerDown);
+  }
+
+  private unbindPodiumInput(): void {
+    if (!this.podiumInputBound) return;
+    this.podiumInputBound = false;
+    window.removeEventListener("keydown", this.onPodiumKeyDown);
+    this.lobby.removeEventListener("pointerdown", this.onPodiumPointerDown);
+  }
+
+  private clearPodiumCelebration(): void {
+    this.podiumKoShown = false;
+    this.podiumWinnerJump = false;
+    this.podiumLoserKo = false;
+    this.unbindPodiumInput();
   }
 
   setAvatar(avatar: AvatarConfiguration | null): void {
@@ -187,9 +258,11 @@ export class LobbyFighterPreview {
   }
 
   setWaitingRoster(local: PlayerState, maxPlayers: PlayerCount): void {
+    this.clearPodiumCelebration();
     this.demoToken += 1;
     this.animating = false;
     this.layoutMode = "matchmaking";
+    this.podiumMode = false;
     this.maxSlots = maxPlayers;
     this.localSlot = clampSlot(local.spawnIndex, maxPlayers);
     this.applyLocal(local, this.localSlot);
@@ -200,6 +273,7 @@ export class LobbyFighterPreview {
       startedAt: this.time,
     };
     this.ghostSlots.clear();
+    this.blurredSlots.clear();
     for (let slot = 0; slot < 4; slot += 1) {
       if (slot >= maxPlayers) {
         this.slotPlayers[slot] = null;
@@ -218,12 +292,74 @@ export class LobbyFighterPreview {
     this.layout();
   }
 
+  setRematchRoster(
+    local: PlayerState,
+    stands: PodiumStand[],
+    maxPlayers: PlayerCount,
+    winnerId: string | null,
+  ): void {
+    this.demoToken += 1;
+    this.animating = false;
+    this.layoutMode = "matchmaking";
+    this.podiumMode = true;
+    this.maxSlots = maxPlayers;
+    this.ghostSlots.clear();
+    this.blurredSlots.clear();
+
+    const localIndex = stands.findIndex((stand) => stand.player?.id === local.id);
+    this.localSlot = localIndex >= 0 ? localIndex : clampSlot(local.spawnIndex, maxPlayers);
+    this.applyLocal(local, this.localSlot);
+    this.localPlayer.facing = this.localSlot % 2 === 0 ? 1 : -1;
+    this.localPlayer.attackState = { type: "idle" };
+    this.localPlayer.lives = 1;
+
+    for (let slot = 0; slot < 4; slot += 1) {
+      if (slot >= maxPlayers) {
+        this.slotPlayers[slot] = null;
+        continue;
+      }
+      const player = stands[slot]?.player ?? null;
+      if (!player) {
+        this.slotPlayers[slot] = null;
+        continue;
+      }
+      if (slot === this.localSlot) {
+        this.slotPlayers[slot] = this.localPlayer;
+        continue;
+      }
+      const filled = idlePlayer(player.id, slot);
+      filled.name = player.name;
+      filled.avatar = { ...player.avatar };
+      filled.facing = slot % 2 === 0 ? 1 : -1;
+      filled.lives = 1;
+      this.slotPlayers[slot] = filled;
+    }
+
+    if (!this.podiumKoShown) {
+      for (const fighter of this.fighters) fighter.resetForMatch();
+      for (let slot = 0; slot < maxPlayers; slot += 1) {
+        const player = stands[slot]?.player ?? null;
+        if (!player || !winnerId || player.id === winnerId) continue;
+        this.fighters[slot].showKo(this.time, true);
+      }
+      this.podiumKoShown = true;
+    }
+
+    this.podiumWinnerJump = Boolean(winnerId && local.id === winnerId);
+    this.podiumLoserKo = Boolean(winnerId && local.id !== winnerId);
+    if (this.podiumWinnerJump || this.podiumLoserKo) this.bindPodiumInput();
+    else this.unbindPodiumInput();
+
+    this.layout();
+  }
+
   revealPlayer(player: PlayerState): void {
     this.demoToken += 1;
     this.animating = false;
     this.layoutMode = "matchmaking";
     const slot = clampSlot(player.spawnIndex, this.maxSlots);
     this.ghostSlots.delete(slot);
+    this.blurredSlots.delete(slot);
     if (slot === this.localSlot) {
       this.applyLocal(player, slot);
       this.localPlayer.attackState = { type: "idle" };
@@ -243,9 +379,11 @@ export class LobbyFighterPreview {
     const token = this.demoToken + 1;
     this.demoToken = token;
     this.layoutMode = "matchmaking";
+    this.podiumMode = false;
     this.maxSlots = maxPlayers;
     this.localSlot = clampSlot(local.spawnIndex, maxPlayers);
     this.ghostSlots.clear();
+    this.blurredSlots.clear();
     this.animating = false;
 
     for (let slot = 0; slot < 4; slot += 1) this.slotPlayers[slot] = null;
@@ -317,14 +455,18 @@ export class LobbyFighterPreview {
   }
 
   clearRoster(): void {
+    this.clearPodiumCelebration();
     this.demoToken += 1;
     this.animating = false;
     this.layoutMode = "solo";
+    this.podiumMode = false;
     this.maxSlots = 2;
     this.localSlot = 0;
     this.ghostSlots.clear();
+    this.blurredSlots.clear();
     for (let slot = 0; slot < 4; slot += 1) this.slotPlayers[slot] = null;
     for (const fighter of this.fighters) {
+      fighter.resetForMatch();
       fighter.alpha = 1;
       fighter.filters = null;
       fighter.visible = slotVisible(fighter, this.fighters[0]);
@@ -364,11 +506,15 @@ export class LobbyFighterPreview {
   }
 
   async jump(onApex?: () => void): Promise<void> {
-    if (!this.ready || this.loading || this.seeking || this.layoutMode === "matchmaking") return;
+    if (!this.ready || this.loading) return;
+    if (this.layoutMode === "matchmaking" && !this.podiumWinnerJump) return;
+    if (this.seeking && !this.podiumWinnerJump) return;
     const token = this.demoToken + 1;
     this.demoToken = token;
     this.resetBody(this.localPlayer);
-    this.localPlayer.facing = 1;
+    this.localPlayer.facing = this.podiumMode
+      ? (this.localSlot % 2 === 0 ? 1 : -1)
+      : 1;
     await this.playJump(token, onApex);
   }
 
@@ -402,29 +548,28 @@ export class LobbyFighterPreview {
 
     const stageTop = Math.max(stage.top, lobby.top);
     const feetY = Math.min(platform.top, lobby.bottom - 8);
-    const available = Math.max(64, feetY - stageTop - 8);
     const matchmaking = this.layoutMode === "matchmaking";
-    this.scale = PREVIEW_SCALE * (available / FIGHTER_VISUAL_HEIGHT) * (matchmaking ? (this.maxSlots > 2 ? 0.78 : 0.9) : 1);
-    const y = feetY - lobby.top;
     const lanes = this.laneXs();
+    if (matchmaking) this.layoutExtraPlatforms(lanes, feetY);
+    else this.hideExtraPlatforms();
+
+    const podiumTop = this.highestPodiumTop(lobby.top, feetY);
+    const available = Math.max(64, (this.podiumMode ? podiumTop : feetY) - stageTop - 8);
+    this.scale = PREVIEW_SCALE * (available / FIGHTER_VISUAL_HEIGHT) * (matchmaking ? (this.maxSlots > 2 ? 0.78 : 0.9) : 1);
 
     if (matchmaking) {
-      this.localPlayer.position.x = lanes[this.localSlot] ?? lanes[0];
-      this.localPlayer.position.y = y;
-      this.localPlayer.facing = this.localSlot % 2 === 0 ? 1 : -1;
       for (let slot = 0; slot < this.maxSlots; slot += 1) {
         const player = this.slotPlayers[slot];
-        if (!player || slot === this.localSlot) continue;
+        if (!player) continue;
+        const standY = this.podiumFeetY(slot, lobby.top, feetY);
         player.position.x = lanes[slot] ?? lanes[0];
-        player.position.y = y;
+        player.position.y = standY;
         player.facing = slot % 2 === 0 ? 1 : -1;
       }
-      this.layoutExtraPlatforms(lanes, feetY);
-    } else {
-      this.localPlayer.position.x = lanes[0];
-      this.localPlayer.position.y = y;
-      this.hideExtraPlatforms();
+      return;
     }
+    this.localPlayer.position.x = lanes[0];
+    this.localPlayer.position.y = feetY - lobby.top;
   }
 
   private layoutExtraPlatforms(lanes: number[], feetY: number): void {
@@ -432,7 +577,16 @@ export class LobbyFighterPreview {
     const lobby = this.lobby.getBoundingClientRect();
     const column = this.extraPlatformRoot.parentElement?.getBoundingClientRect() ?? lobby;
     this.extraPlatformRoot.hidden = false;
-    this.extraPlatformRoot.style.top = `${Math.round(feetY - column.top)}px`;
+    const card = this.playerCard?.getBoundingClientRect();
+    if (this.podiumMode && card) {
+      this.extraPlatformRoot.style.top = "auto";
+      this.extraPlatformRoot.style.bottom = `${Math.max(0, Math.round(column.bottom - card.top))}px`;
+      this.extraPlatformRoot.style.height = "140px";
+    } else {
+      this.extraPlatformRoot.style.top = `${Math.round(feetY - column.top)}px`;
+      this.extraPlatformRoot.style.bottom = "";
+      this.extraPlatformRoot.style.height = "";
+    }
     for (const platform of this.extraPlatforms) {
       const slot = Number(platform.dataset.slot);
       const visible = slot >= 0 && slot < this.maxSlots;
@@ -440,11 +594,42 @@ export class LobbyFighterPreview {
       if (!visible) continue;
       const lobbyX = lanes[slot] ?? lanes[0];
       platform.style.left = `${Math.round(lobbyX - (column.left - lobby.left))}px`;
+      if (this.podiumMode) {
+        platform.style.top = "auto";
+        platform.style.bottom = "0px";
+      } else {
+        platform.style.top = "0px";
+        platform.style.bottom = "";
+        platform.removeAttribute("data-place");
+        platform.removeAttribute("data-status");
+      }
     }
   }
 
+  private podiumFeetY(slot: number, lobbyTop: number, fallbackFeetY: number): number {
+    if (!this.podiumMode) return fallbackFeetY - lobbyTop;
+    const oval = this.extraPlatforms[slot]?.querySelector(".character-platform");
+    if (!(oval instanceof HTMLElement)) return fallbackFeetY - lobbyTop;
+    const rect = oval.getBoundingClientRect();
+    if (rect.height < 2) return fallbackFeetY - lobbyTop;
+    return rect.top - lobbyTop;
+  }
+
+  private highestPodiumTop(lobbyTop: number, fallbackFeetY: number): number {
+    if (!this.podiumMode) return fallbackFeetY;
+    let top = fallbackFeetY;
+    for (let slot = 0; slot < this.maxSlots; slot += 1) {
+      top = Math.min(top, this.podiumFeetY(slot, lobbyTop, fallbackFeetY) + lobbyTop);
+    }
+    return top;
+  }
+
   private hideExtraPlatforms(): void {
-    if (this.extraPlatformRoot) this.extraPlatformRoot.hidden = true;
+    if (!this.extraPlatformRoot) return;
+    this.extraPlatformRoot.hidden = true;
+    this.extraPlatformRoot.style.top = "";
+    this.extraPlatformRoot.style.bottom = "";
+    this.extraPlatformRoot.style.height = "";
   }
 
   private laneXs(): number[] {

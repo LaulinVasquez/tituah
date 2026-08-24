@@ -105,6 +105,10 @@ export class InputManager {
     };
   }
 
+  reset(): void {
+    this.clear();
+  }
+
   dispose(): void {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
