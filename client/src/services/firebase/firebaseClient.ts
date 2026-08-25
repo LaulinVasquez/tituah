@@ -1,6 +1,12 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import {
+  getAuth,
+  indexedDBLocalPersistence,
+  initializeAuth,
+  type Auth,
+} from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
+import { isNativeApp } from "../../config/runtime.js";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "AIzaSyBgBaqIVIbvbLMyBOYqg_OnO9sGAVixprU",
@@ -13,6 +19,7 @@ const firebaseConfig = {
 };
 
 let app: FirebaseApp | undefined;
+let auth: Auth | undefined;
 
 export function getFirebaseApp(): FirebaseApp {
   app ??= initializeApp(firebaseConfig);
@@ -20,7 +27,19 @@ export function getFirebaseApp(): FirebaseApp {
 }
 
 export function clientAuth(): Auth {
-  return getAuth(getFirebaseApp());
+  if (auth) return auth;
+  const firebaseApp = getFirebaseApp();
+  if (isNativeApp()) {
+    try {
+      // Capacitor/WKWebView needs explicit persistence; getAuth() alone can stall sign-in.
+      auth = initializeAuth(firebaseApp, { persistence: indexedDBLocalPersistence });
+      return auth;
+    } catch {
+      // Already initialized in this JS context.
+    }
+  }
+  auth = getAuth(firebaseApp);
+  return auth;
 }
 
 export function clientDb(): Firestore {

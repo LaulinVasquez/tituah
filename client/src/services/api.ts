@@ -27,7 +27,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error(
-        "Game server did not respond. Restart dev with `npm run dev` and ensure port 8080 is free.",
+        `Game server did not respond (${apiBaseUrl() || "same-origin"}). Check VITE_API_URL / network.`,
       );
     }
     throw error;

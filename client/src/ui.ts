@@ -112,6 +112,10 @@ export class Ui {
     return this.loading;
   }
 
+  get usesDirectTapHandling(): boolean {
+    return this.directTapHandling;
+  }
+
   constructor() {
     const stored = localStorage.getItem("tituah:name");
     if (stored) this.loginNameInput.value = stored;

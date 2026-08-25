@@ -176,15 +176,24 @@ export class GameClient {
 
   private async authenticate(mode: "in" | "up" | "guest", impact?: HTMLElement): Promise<void> {
     if (this.ui.isLoading) return;
+    this.ui.setLoading(true);
     try {
-      if (impact) await this.ui.slapToward(impact);
-      this.ui.setLoading(true);
+      // Skip slap on native/touch — avoids racing with double-tap handlers before loading locks.
+      if (impact && !this.ui.usesDirectTapHandling) await this.ui.slapToward(impact);
       if (mode === "guest") {
-        await authService.playAsGuest();
+        await withTimeout(authService.playAsGuest(), 20_000, "Guest sign-in timed out. Check network and try again.");
       } else if (mode === "up") {
-        await authService.signUp(this.ui.email(), this.ui.password(), this.ui.displayName("login"));
+        await withTimeout(
+          authService.signUp(this.ui.email(), this.ui.password(), this.ui.displayName("login")),
+          20_000,
+          "Sign-up timed out. Check network and try again.",
+        );
       } else {
-        await authService.signIn(this.ui.email(), this.ui.password());
+        await withTimeout(
+          authService.signIn(this.ui.email(), this.ui.password()),
+          20_000,
+          "Sign-in timed out. Check network and try again.",
+        );
       }
       this.ui.rememberName();
       this.ui.showMenu(authService.profile, undefined, this.guestSession());
@@ -413,4 +422,20 @@ export class GameClient {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong";
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }

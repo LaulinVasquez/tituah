@@ -1,5 +1,9 @@
 import { Capacitor } from "@capacitor/core";
 
+/** Hosted backend used when Capacitor builds have no explicit VITE_* URLs. */
+const NATIVE_API_DEFAULT = "https://staging.tituah.samirrodriguez.click";
+const NATIVE_WS_DEFAULT = "wss://staging.tituah.samirrodriguez.click/ws";
+
 export function isNativeApp(): boolean {
   return Capacitor.isNativePlatform();
 }
@@ -23,27 +27,17 @@ function isLocalWebOrigin(origin: URL | null): boolean {
   return origin.hostname === "localhost" || origin.hostname === "127.0.0.1";
 }
 
-function ensureEndpoint(name: "VITE_API_URL" | "VITE_WS_URL", value: string | undefined): string {
-  if (value) return value;
-  throw new Error(`${name} is required when running Tituah inside Capacitor.`);
-}
-
-function nativeEndpoint(name: "VITE_API_URL" | "VITE_WS_URL"): string | null {
-  const explicit = trimEnv(import.meta.env[name]);
-  return explicit ?? null;
-}
-
 export function apiBaseUrl(): string {
   const explicit = trimEnv(import.meta.env.VITE_API_URL);
   if (import.meta.env.DEV) return explicit ?? "http://localhost:8080";
-  if (isNativeApp()) return ensureEndpoint("VITE_API_URL", explicit);
+  if (isNativeApp()) return explicit ?? NATIVE_API_DEFAULT;
   return explicit ?? "";
 }
 
 export function socketUrl(): string {
   const explicit = trimEnv(import.meta.env.VITE_WS_URL);
   if (import.meta.env.DEV) return explicit ?? "ws://localhost:8080/ws";
-  if (isNativeApp()) return nativeEndpoint("VITE_WS_URL") ?? "";
+  if (isNativeApp()) return explicit ?? NATIVE_WS_DEFAULT;
 
   if (explicit) return explicit;
   const origin = normalizedOrigin();
@@ -54,12 +48,22 @@ export function socketUrl(): string {
 }
 
 export function requireSocketUrl(): string {
-  const url = socketUrl();
-  if (url) return url;
-  return ensureEndpoint("VITE_WS_URL", undefined);
+  return socketUrl();
 }
 
 export function resolveAssetUrl(path: string): string {
+  if (/^(https?:|capacitor:|ionic:|data:|blob:)/i.test(path)) {
+    try {
+      const url = new URL(path);
+      // Vite can emit hostless capacitor://assets/... in WKWebView; force localhost.
+      if ((url.protocol === "capacitor:" || url.protocol === "ionic:") && !url.hostname) {
+        return `${url.protocol}//localhost${url.pathname}${url.search}${url.hash}`;
+      }
+      return path;
+    } catch {
+      return path;
+    }
+  }
   const normalized = path.startsWith("/") ? path.slice(1) : path;
   try {
     return new URL(normalized, `${window.location.origin}/`).toString();
