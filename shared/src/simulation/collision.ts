@@ -12,6 +12,7 @@ export function resolveHorizontalCollisions(
 ): void {
   const box = getPlayerAABB(player);
   for (const platform of platforms) {
+    if (platform.id !== "main") continue;
     if (!aabbOverlap(box, platform)) continue;
     const overlapLeft = box.x + box.width - platform.x;
     const overlapRight = platform.x + platform.width - box.x;
@@ -44,7 +45,7 @@ export function resolveVerticalCollisions(
       continue;
     }
 
-    if (player.velocity.y < 0) {
+    if (player.velocity.y < 0 && platform.id === "main") {
       player.position.y = platform.y + platform.height + PLAYER_HEIGHT;
       player.velocity.y = 0;
       box.y = player.position.y - PLAYER_HEIGHT;

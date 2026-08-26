@@ -1,6 +1,9 @@
-import { TICK_DT, TICK_RATE, type PlayerInput, type ServerMessage } from "@tituah/shared";
+import { getStage, isStageId, TICK_DT, TICK_RATE, type PlayerInput, type ServerMessage } from "@tituah/shared";
 import { Match } from "./match.js";
 import type { Session } from "./session.js";
+import { createUserProfile, recordMatchResult } from "./services/firebase/game-data.js";
+import { matchesRepository } from "./repositories/matches.repository.js";
+import { verifyIdToken } from "./services/firebase/firebaseAdmin.js";
 
 const PLAYERS_PER_MATCH = 2;
 
@@ -24,11 +27,28 @@ export class MatchManager {
     this.timer = null;
   }
 
-  join(session: Session, name: string): Match {
-    session.name = name.trim() || "Fighter";
-    const match = this.getOrCreateWaitingMatch();
-    const player = match.addPlayer(session.id, session.name);
-    session.playerId = player.id;
+  async join(
+    session: Session,
+    name: string,
+    idToken: string,
+    requestedStageId: string,
+  ): Promise<Match> {
+    const decoded = await verifyIdToken(idToken);
+    const profile = await createUserProfile(decoded.uid, {
+      displayName: name,
+    });
+
+    session.uid = profile.uid;
+    session.name = profile.displayName;
+    session.playerId = profile.uid;
+
+    const existing = this.sessionsByPlayer.get(profile.uid);
+    if (existing && existing !== session) {
+      this.leave(existing);
+    }
+
+    const match = this.getOrCreateWaitingMatch(requestedStageId);
+    const player = match.addPlayer(profile.uid, profile.displayName, profile.avatar);
     session.matchId = match.id;
     this.sessionsByPlayer.set(player.id, session);
 
@@ -41,7 +61,7 @@ export class MatchManager {
       } satisfies ServerMessage),
     );
 
-    this.broadcast(match, session.id, {
+    this.broadcast(match, session.playerId, {
       type: "player_joined",
       playerId: player.id,
       name: player.name,
@@ -73,6 +93,8 @@ export class MatchManager {
     if (match.playerCount === 0) {
       this.matches.delete(match.id);
     }
+    session.playerId = null;
+    session.matchId = null;
   }
 
   handleInput(session: Session, input: PlayerInput): void {
@@ -98,13 +120,42 @@ export class MatchManager {
     return this.matches.get(session.matchId) ?? null;
   }
 
-  private getOrCreateWaitingMatch(): Match {
+  private getOrCreateWaitingMatch(requestedStageId: string): Match {
     if (this.waiting && this.waiting.status === "waiting") {
       return this.waiting;
     }
-    const match = new Match(crypto.randomUUID(), (playerId, message) => {
-      this.send(match, playerId, message);
-    });
+    const stage = getStage(isStageId(requestedStageId) ? requestedStageId : "barnyard");
+    const match = new Match(
+      crypto.randomUUID(),
+      (playerId, message) => {
+        this.send(match, playerId, message);
+      },
+      stage,
+      {
+        onStart: (started) => {
+          void matchesRepository
+            .createStarted({
+              id: started.id,
+              players: [...started.players.keys()],
+              mapId: started.map.id,
+            })
+            .catch((error) => console.error("Failed to persist match start", error));
+        },
+        onEnd: (ended) => {
+          void recordMatchResult({
+            id: ended.id,
+            status: "completed",
+            players: [...ended.players.keys()],
+            winnerId: ended.winnerId,
+            mapId: ended.map.id,
+            startedAt: null,
+            endedAt: null,
+            durationMs: Math.round(ended.time * 1000),
+            results: ended.combatResults(),
+          }).catch((error) => console.error("Failed to persist match result", error));
+        },
+      },
+    );
     this.matches.set(match.id, match);
     this.waiting = match;
     return match;

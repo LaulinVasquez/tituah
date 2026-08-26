@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc(request.auth.uid).role == "admin";
+    }
+
+    function unchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    function ownsItem(itemId) {
+      return itemId == null
+        || exists(/databases/$(database)/documents/users/$(request.auth.uid)/inventory/$(itemId));
+    }
+
+    function catalogItem(itemId) {
+      return get(/databases/$(database)/documents/items/$(itemId)).data;
+    }
+
+    function avatarSlotOk(field, slot) {
+      let next = request.resource.data.avatar[field];
+      return next == resource.data.avatar[field]
+        || next == null
+        || (
+          ownsItem(next)
+          && exists(/databases/$(database)/documents/items/$(next))
+          && catalogItem(next).slot == slot
+          && catalogItem(next).enabled == true
+        );
+    }
+
+    function avatarUpdateOk() {
+      return request.resource.data.avatar.baseAvatarId is string
+        && avatarSlotOk("headAccessoryId", "head")
+        && avatarSlotOk("faceAccessoryId", "face")
+        && avatarSlotOk("bodyAccessoryId", "body")
+        && avatarSlotOk("waistAccessoryId", "waist")
+        && avatarSlotOk("backAccessoryId", "back")
+        && avatarSlotOk("leftHandAccessoryId", "left_hand")
+        && avatarSlotOk("rightHandAccessoryId", "right_hand")
+        && avatarSlotOk("feetAccessoryId", "feet")
+        && avatarSlotOk("effectAccessoryId", "effect");
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, delete: if false;
+      allow update: if isSelf(uid)
+        && unchanged("uid")
+        && unchanged("role")
+        && unchanged("progression")
+        && unchanged("stats")
+        && unchanged("createdAt")
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 24
+        && request.resource.data.username is string
+        && request.resource.data.username.size() > 0
+        && request.resource.data.username.size() <= 24
+        && avatarUpdateOk();
+
+      match /inventory/{itemId} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /items/{itemId} {
+      allow read: if signedIn() && (resource.data.enabled == true || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /matches/{matchId} {
+      allow read: if signedIn() && (
+        isAdmin()
+        || request.auth.uid in resource.data.players
+      );
+      allow create, update, delete: if false;
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import { Assets, ColorMatrixFilter, Container, Rectangle, Sprite, Texture } from "pixi.js";
 import type { PlayerState } from "@tituah/shared";
+import { appearanceFromAvatar, colorHue, type AccessorySprite } from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
@@ -12,6 +13,7 @@ const RUN_THRESHOLD = 24;
 const LAND_DURATION = 0.2;
 const HIT_DURATION = 0.38;
 const KO_DURATION = 0.65;
+const RESPAWN_HIDE_DURATION = 0.52;
 
 let texturePromise: Promise<Record<FighterAnimation, Texture[]>> | null = null;
 
@@ -38,33 +40,48 @@ function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
 
 export class FighterSprite extends Container {
   private readonly sprite = new Sprite();
+  private readonly accessoryLayer = new Container();
+  private readonly accessorySprites = new Map<string, Sprite>();
+  private sheet!: Texture;
   private textures!: Record<FighterAnimation, Texture[]>;
   private animation: FighterAnimation = "idle";
   private animationStartedAt = 0;
   private wasGrounded = true;
   private hitUntil = 0;
+  private hitStartedAt = 0;
+  private hitDirection = 1;
+  private hitStrength = 1;
   private koUntil = 0;
-  private colorVariant = -1;
+  private hiddenUntil = 0;
+  private colorKey = "";
 
   constructor(readonly playerId: string) {
     super();
-    this.addChild(this.sprite);
+    this.addChild(this.sprite, this.accessoryLayer);
     this.sprite.anchor.set(0.5, 1);
   }
 
   async load(): Promise<void> {
     this.textures = await loadTextures();
+    this.sheet = await Assets.load<Texture>(FIGHTER_SHEET_URL);
     this.sprite.texture = this.textures.idle[0];
   }
 
-  showHit(time: number): void {
+  showHit(time: number, direction: number, strength: number): void {
+    this.hitStartedAt = time;
     this.hitUntil = Math.max(this.hitUntil, time + HIT_DURATION);
+    this.hitDirection = direction || 1;
+    this.hitStrength = Math.min(1.8, Math.max(0.8, strength));
     this.setAnimation("hit", time, true);
   }
 
   showKo(time: number): void {
     this.koUntil = Math.max(this.koUntil, time + KO_DURATION);
     this.setAnimation("ko", time, true);
+  }
+
+  showVoidDeath(time: number): void {
+    this.hiddenUntil = Math.max(this.hiddenUntil, time + RESPAWN_HIDE_DURATION);
   }
 
   update(player: PlayerState, time: number): void {
@@ -84,9 +101,15 @@ export class FighterSprite extends Container {
 
     this.sprite.scale.set(scale * player.facing, scale);
     this.sprite.position.set((frame.offsetX ?? 0) * scale * player.facing, frame.offsetY ?? 0);
-    this.setColorVariant(player.spawnIndex);
+    const appearance = appearanceFromAvatar(player.avatar, player.spawnIndex);
+    this.setColorVariant(appearance.color);
+    this.syncAccessories(appearance.accessories, player.facing);
+    this.applyHitMotion(time);
+    this.zIndex = player.position.y
+      + (player.attackState.type === "active" ? 1_000 : 0)
+      + (time < this.hitUntil ? 1_100 : 0);
     this.alpha = player.invulnerableUntil > time && Math.floor(time * 12) % 2 === 0 ? 0.35 : 1;
-    this.visible = player.lives > 0 || time < this.koUntil;
+    this.visible = time >= this.hiddenUntil && (player.lives > 0 || time < this.koUntil);
     this.wasGrounded = player.grounded;
   }
 
@@ -123,17 +146,62 @@ export class FighterSprite extends Container {
     this.sprite.texture = this.textures[this.animation][this.frameIndex(time)];
   }
 
-  private setColorVariant(spawnIndex: number): void {
-    const variant = spawnIndex % 2;
-    if (variant === this.colorVariant) return;
-    this.colorVariant = variant;
-    if (variant === 0) {
+  private setColorVariant(color: ReturnType<typeof appearanceFromAvatar>["color"]): void {
+    if (color === this.colorKey) return;
+    this.colorKey = color;
+    const hue = colorHue(color);
+    if (hue == null) {
       this.sprite.filters = [];
       return;
     }
-    const blue = new ColorMatrixFilter();
-    blue.hue(190, false);
-    blue.saturate(0.35, true);
-    this.sprite.filters = [blue];
+    const filter = new ColorMatrixFilter();
+    filter.hue(hue, false);
+    filter.saturate(0.28, true);
+    this.sprite.filters = [filter];
+  }
+
+  private syncAccessories(accessories: AccessorySprite[], facing: 1 | -1): void {
+    if (!this.sheet) return;
+    const seen = new Set<string>();
+    for (const accessory of accessories) {
+      seen.add(accessory.id);
+      let sprite = this.accessorySprites.get(accessory.id);
+      if (!sprite) {
+        sprite = new Sprite(
+          new Texture({
+            source: this.sheet.source,
+            frame: new Rectangle(
+              accessory.frame.x,
+              accessory.frame.y,
+              accessory.frame.width,
+              accessory.frame.height,
+            ),
+          }),
+        );
+        sprite.anchor.set(0.5, 1);
+        this.accessoryLayer.addChild(sprite);
+        this.accessorySprites.set(accessory.id, sprite);
+      }
+      const accessoryScale = 42 / accessory.frame.height;
+      sprite.scale.set(accessoryScale * facing, accessoryScale);
+      sprite.position.set(accessory.anchorX * facing, accessory.anchorY);
+      sprite.visible = true;
+    }
+    for (const [id, sprite] of this.accessorySprites) {
+      if (!seen.has(id)) sprite.visible = false;
+    }
+  }
+
+  private applyHitMotion(time: number): void {
+    if (time >= this.hitUntil) {
+      this.rotation = 0;
+      return;
+    }
+    const progress = Math.min(1, Math.max(0, (time - this.hitStartedAt) / HIT_DURATION));
+    const decay = 1 - progress;
+    const shake = Math.sin(progress * Math.PI * 7) * 7 * decay * this.hitStrength;
+    this.x += shake * this.hitDirection;
+    this.y -= Math.sin(progress * Math.PI) * 8 * this.hitStrength;
+    this.rotation = -this.hitDirection * 0.08 * decay * this.hitStrength;
   }
 }

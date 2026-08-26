@@ -19,7 +19,7 @@ export function applyMovement(
   platforms: Platform[],
   dt: number,
 ): void {
-  const previousBottom = player.position.y;
+  let previousBottom = player.position.y;
   const wish =
     (input.right ? 1 : 0) - (input.left ? 1 : 0);
 
@@ -36,10 +36,22 @@ export function applyMovement(
   }
 
   const jumpPressed = input.jump && !previousInput.jump;
+  const dropPlatform = player.grounded && input.down
+    ? platforms.find((platform) =>
+        platform.id !== "main"
+        && Math.abs(player.position.y - platform.y) <= 3
+        && player.position.x >= platform.x
+        && player.position.x <= platform.x + platform.width)
+    : undefined;
+  if (dropPlatform) {
+    player.position.y = dropPlatform.y + 8;
+    previousBottom = player.position.y;
+    player.grounded = false;
+  }
   if (player.grounded) {
     player.jumpsRemaining = MAX_JUMPS;
   }
-  if (jumpPressed && player.jumpsRemaining > 0) {
+  if (!dropPlatform && jumpPressed && player.jumpsRemaining > 0) {
     player.velocity.y = JUMP_VELOCITY;
     player.grounded = false;
     player.jumpsRemaining -= 1;

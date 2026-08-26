@@ -15,11 +15,20 @@ export type ServerMessage =
   | ServerSnapshot
   | PlayerHitMessage
   | PlayerRespawnMessage
-  | MatchEndedMessage;
+  | MatchEndedMessage
+  | ErrorMessage;
 
 export interface JoinMessage {
   type: "join";
   name: string;
+  stageId: string;
+  idToken: string;
+}
+
+export interface ErrorMessage {
+  type: "error";
+  code: string;
+  message: string;
 }
 
 export interface ClientInputMessage {
