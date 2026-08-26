@@ -2,92 +2,350 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <title>Tituah</title>
   </head>
   <body>
     <div id="app">
-      <div id="viewport">
-        <canvas id="game"></canvas>
-        <div id="hud" hidden>
+      <canvas id="game"></canvas>
+      <div id="hud" hidden>
+        <div class="hud-cluster hud-cluster-left">
           <div class="fighter" data-slot="0">
             <span class="name">P1</span>
             <span class="lives"></span>
             <span class="percent">0%</span>
           </div>
+          <div class="fighter" data-slot="2" hidden>
+            <span class="name">P3</span>
+            <span class="lives"></span>
+            <span class="percent">0%</span>
+          </div>
+        </div>
+        <div class="hud-center">
+          <div class="hud-controls">
+            <button
+              id="hud-audio"
+              class="hud-audio"
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="audio-mixer"
+              aria-expanded="false"
+              aria-label="Sound"
+              title="Sound"
+            >
+              <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M4 9v6h3.2L12 19.8V4.2L7.2 9H4zm11.5 3c0-1.8-1-3.3-2.5-4v8c1.5-.7 2.5-2.2 2.5-4zm2.5 0c0 3-1.7 5.6-4.1 6.9l.8 1.8C17.9 19 20 16.2 20 12s-2.1-7-5.3-8.7l-.8 1.8C16.8 6.4 18.5 9 18.5 12z"
+                />
+              </svg>
+              <svg class="icon-off" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M4 9v6h3.2L12 19.8V4.2L7.2 9H4zm12.7.1-1.4 1.4.9.9c-.3.8-.5 1.7-.5 2.6 0 1.8 1 3.3 2.5 4v-2.2c-.4-.5-.7-1.1-.7-1.8 0-.4.1-.8.2-1.2l1.6 1.6c-.4 1.3-.4 2.7 0 4l1.5-1.5c-.2-.8-.3-1.6-.3-2.5 0-1.7.4-3.3 1.2-4.7l-4.5-4.5-1.4 1.4 2.3 2.3-.9.9zM19.1 4.3 4.3 19.1l1.4 1.4 14.8-14.8-1.4-1.4z"
+                />
+              </svg>
+            </button>
+            <button
+              id="hud-exit"
+              class="hud-audio hud-exit"
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="exit-confirm"
+              aria-expanded="false"
+              aria-label="Exit match"
+              title="Exit match"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5v-2h5V5h-5V3zm-1.2 4.2 1.4 1.4-2.4 2.4H18v2h-6.2l2.4 2.4-1.4 1.4L8 12l4.8-4.8zM3 5h7v2H5v10h5v2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"
+                />
+              </svg>
+            </button>
+          </div>
           <div class="title">TITUAH</div>
+        </div>
+        <div class="hud-cluster hud-cluster-right">
           <div class="fighter" data-slot="1">
             <span class="name">P2</span>
+            <span class="lives"></span>
+            <span class="percent">0%</span>
+          </div>
+          <div class="fighter" data-slot="3" hidden>
+            <span class="name">P4</span>
             <span class="lives"></span>
             <span class="percent">0%</span>
           </div>
         </div>
       </div>
       <div id="overlay">
-        <section id="auth" class="panel">
-          <p class="eyebrow">Account</p>
-          <h1>Tituah</h1>
-          <p class="blurb">Sign in to save stats, cosmetics, and match results.</p>
-          <label>
-            Display name
-            <input id="display-name" maxlength="24" placeholder="Fighter" autocomplete="nickname" />
-          </label>
-          <label>
-            Email
-            <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
-          </label>
-          <label>
-            Password
-            <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
-          </label>
-          <div class="actions">
-            <button id="sign-in" type="button">Sign in</button>
-            <button id="sign-up" class="secondary" type="button">Create account</button>
+        <section id="lobby" class="panel lobby is-signed-out">
+          <button
+            id="audio-mute"
+            class="audio-mute"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="audio-mixer"
+            aria-expanded="false"
+            aria-pressed="false"
+            aria-label="Sound"
+            title="Sound"
+          >
+            <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M4 9v6h3.2L12 19.8V4.2L7.2 9H4zm11.5 3c0-1.8-1-3.3-2.5-4v8c1.5-.7 2.5-2.2 2.5-4zm2.5 0c0 3-1.7 5.6-4.1 6.9l.8 1.8C17.9 19 20 16.2 20 12s-2.1-7-5.3-8.7l-.8 1.8C16.8 6.4 18.5 9 18.5 12z"
+              />
+            </svg>
+            <svg class="icon-off" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M4 9v6h3.2L12 19.8V4.2L7.2 9H4zm12.7.1-1.4 1.4.9.9c-.3.8-.5 1.7-.5 2.6 0 1.8 1 3.3 2.5 4v-2.2c-.4-.5-.7-1.1-.7-1.8 0-.4.1-.8.2-1.2l1.6 1.6c-.4 1.3-.4 2.7 0 4l1.5-1.5c-.2-.8-.3-1.6-.3-2.5 0-1.7.4-3.3 1.2-4.7l-4.5-4.5-1.4 1.4 2.3 2.3-.9.9zM19.1 4.3 4.3 19.1l1.4 1.4 14.8-14.8-1.4-1.4z"
+              />
+            </svg>
+          </button>
+          <canvas id="lobby-fighter" class="lobby-fighter-canvas"></canvas>
+          <div class="lobby-character" id="character-column">
+            <div class="character-stage-backdrop" id="character-stage-backdrop" aria-hidden="true"></div>
+            <div class="character-stage" id="character-stage">
+              <div id="countdown-banner" class="countdown-banner" hidden>3</div>
+              <div id="result-banner" class="result-banner" hidden>
+                <p id="result-outcome" class="result-outcome">You win!!!</p>
+                <p class="result-subline">Play again or go back home.</p>
+              </div>
+            </div>
+            <div id="versus-cards" class="versus-cards" data-size="2" hidden>
+              <div class="versus-card" data-slot="0" data-state="empty">
+                <span class="versus-slot">Player 1</span>
+                <strong class="versus-name" id="versus-name-0">—</strong>
+              </div>
+              <div class="versus-vs">VS</div>
+              <div class="versus-card" data-slot="1" data-state="empty">
+                <span class="versus-slot">Player 2</span>
+                <strong class="versus-name" id="versus-name-1">—</strong>
+              </div>
+              <div class="versus-card" data-slot="2" data-state="empty" hidden>
+                <span class="versus-slot">Player 3</span>
+                <strong class="versus-name" id="versus-name-2">—</strong>
+              </div>
+              <div class="versus-card" data-slot="3" data-state="empty" hidden>
+                <span class="versus-slot">Player 4</span>
+                <strong class="versus-name" id="versus-name-3">—</strong>
+              </div>
+            </div>
+            <div id="extra-platforms" class="extra-platforms" hidden>
+              <div class="podium-slot" data-slot="0">
+                <div class="character-platform"></div>
+                <div class="podium-stand">
+                  <span class="podium-place" id="podium-place-0">1st</span>
+                  <strong class="podium-name" id="podium-name-0">—</strong>
+                  <span class="podium-status" id="podium-status-0">Not ready</span>
+                </div>
+              </div>
+              <div class="podium-slot" data-slot="1">
+                <div class="character-platform"></div>
+                <div class="podium-stand">
+                  <span class="podium-place" id="podium-place-1">2nd</span>
+                  <strong class="podium-name" id="podium-name-1">—</strong>
+                  <span class="podium-status" id="podium-status-1">Not ready</span>
+                </div>
+              </div>
+              <div class="podium-slot" data-slot="2" hidden>
+                <div class="character-platform"></div>
+                <div class="podium-stand">
+                  <span class="podium-place" id="podium-place-2">3rd</span>
+                  <strong class="podium-name" id="podium-name-2">—</strong>
+                  <span class="podium-status" id="podium-status-2">Not ready</span>
+                </div>
+              </div>
+              <div class="podium-slot" data-slot="3" hidden>
+                <div class="character-platform"></div>
+                <div class="podium-stand">
+                  <span class="podium-place" id="podium-place-3">4th</span>
+                  <strong class="podium-name" id="podium-name-3">—</strong>
+                  <span class="podium-status" id="podium-status-3">Not ready</span>
+                </div>
+              </div>
+            </div>
+            <div id="player-card" class="player-card is-locked">
+              <div class="character-platform" id="character-platform"></div>
+              <div id="player-card-locked" class="player-card-body">
+                <p class="eyebrow">Progress locked</p>
+                <h3>No fighter loaded</h3>
+                <p class="blurb">Play as guest or sign in to load your name, stats, and fighter.</p>
+              </div>
+              <div id="player-card-profile" class="player-card-body" hidden>
+                <p class="character-name" id="preview-name">Fighter</p>
+                <p class="player-stats" id="player-stats">Lv 1 · 0W 0L</p>
+              </div>
+              <div id="player-card-waiting" class="player-card-body" hidden>
+                <p class="eyebrow">Matchmaking</p>
+                <h3 id="platform-waiting-title">Waiting for opponent</h3>
+                <p id="platform-waiting-blurb" class="blurb">Hold your charge — an opponent will appear on the right.</p>
+                <button id="cancel-wait" class="ghost platform-cancel" type="button">Cancel</button>
+              </div>
+              <div id="player-card-result" class="player-card-body" hidden>
+                <div class="platform-actions">
+                  <button id="again" type="button">Play again</button>
+                  <button id="result-back" class="ghost" type="button">Back</button>
+                </div>
+              </div>
+              <div id="player-card-moves" class="player-card-body" hidden>
+                <p class="eyebrow">Try a move</p>
+                <div class="move-grid">
+                  <button type="button" data-demo-move="idle">Idle</button>
+                  <button type="button" data-demo-move="run">Run</button>
+                  <button type="button" data-demo-move="jump">Jump</button>
+                  <button type="button" data-demo-move="slap">Slap</button>
+                  <button type="button" data-demo-move="hit">Hit</button>
+                </div>
+              </div>
+            </div>
           </div>
-          <button id="guest" class="ghost" type="button">Play as guest</button>
-          <p id="auth-error" class="error" hidden></p>
+          <div class="lobby-options" id="lobby-options">
+            <div id="pane-landing" class="pane">
+              <p class="eyebrow">Platform fighter</p>
+              <h1>Tituah</h1>
+              <p class="blurb">Your name and record stay locked until you play as guest or sign in.</p>
+              <div class="option-stack">
+                <button id="choose-guest" type="button" data-defer-shatter="true">Play as guest</button>
+                <button id="choose-login" class="secondary" type="button">Login</button>
+              </div>
+              <p id="landing-error" class="error" hidden></p>
+            </div>
+            <div id="pane-login" class="pane" hidden>
+              <p class="eyebrow">Account</p>
+              <h2>Login</h2>
+              <p class="blurb">Sign in to keep stats, color, and match results.</p>
+              <label>
+                Display name
+                <input id="login-name" maxlength="24" placeholder="For new accounts" autocomplete="nickname" />
+              </label>
+              <label>
+                Email
+                <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
+              </label>
+              <label>
+                Password
+                <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+              </label>
+              <div class="actions">
+                <button id="sign-in" type="button" data-defer-shatter="true">Sign in</button>
+                <button id="sign-up" class="secondary" type="button" data-defer-shatter="true">Create account</button>
+              </div>
+              <button id="back-login" class="ghost" type="button">Back</button>
+              <p id="auth-error" class="error" hidden></p>
+            </div>
+            <div id="pane-menu" class="pane" hidden>
+              <p id="menu-kind" class="eyebrow">Ready</p>
+              <h2>Let’s fight</h2>
+              <p id="menu-blurb" class="blurb">Your fighter is loaded. Find a match when you’re ready.</p>
+              <p class="stage-heading">Select stage</p>
+              <div class="stage-select" role="group" aria-label="Select stage">
+                <button type="button" data-stage="barnyard" data-selected="true">
+                  <strong>Barnyard Brawl</strong><span>Sunset farm</span>
+                </button>
+                <button type="button" data-stage="fridge" data-selected="false">
+                  <strong>Fridge Frenzy</strong><span>Cold storage</span>
+                </button>
+                <button type="button" data-stage="meadow" data-selected="false">
+                  <strong>Sky-High Meadow</strong><span>Floating islands</span>
+                </button>
+              </div>
+              <p class="stage-heading">Players</p>
+              <div class="player-count-select" role="group" aria-label="Players">
+                <button type="button" data-players="2" data-selected="true">
+                  <strong>2</strong><span>Duel</span>
+                </button>
+                <button type="button" data-players="3" data-selected="false">
+                  <strong>3</strong><span>Trio</span>
+                </button>
+                <button type="button" data-players="4" data-selected="false">
+                  <strong>4</strong><span>Free-for-all</span>
+                </button>
+              </div>
+              <button id="join" type="button">Find match</button>
+              <button id="edit-avatar" class="secondary" type="button">Edit fighter</button>
+              <button id="sign-out" class="ghost" type="button">Sign out</button>
+              <p class="hint">A / D move · Space twice to double jump · S / ↓ drops through upper platforms · Hold Z to slap</p>
+              <p id="menu-error" class="error" hidden></p>
+            </div>
+            <div id="pane-waiting" class="pane" hidden>
+              <p class="eyebrow">Matchmaking</p>
+              <h2 id="waiting-title">Waiting for opponent</h2>
+              <p id="waiting-slot" class="slot-chip" data-slot="0">Joining as Player 1</p>
+              <div id="waiting-solo">
+                <p class="blurb">Open a second window with another account, or a guest in a private window.</p>
+              </div>
+              <div id="waiting-versus" hidden>
+                <p class="blurb">Match found — fighters ready. Countdown starting…</p>
+              </div>
+              <p id="waiting-countdown" class="countdown-readout" hidden></p>
+            </div>
+            <div id="pane-result" class="pane" hidden>
+              <h2 id="result-title">Winner</h2>
+            </div>
+            <div id="pane-edit" class="pane" hidden>
+              <p class="eyebrow">Fighter</p>
+              <h2>Edit</h2>
+              <p class="blurb">Change your name and color. Use the platform under your fighter to preview moves.</p>
+              <label>
+                Display name
+                <input id="display-name" maxlength="24" placeholder="Fighter" autocomplete="nickname" />
+              </label>
+              <p class="stage-heading">Color</p>
+              <div id="color-grid" class="color-grid" role="radiogroup" aria-label="Fighter color"></div>
+              <p id="editor-hint" class="blurb" hidden></p>
+              <p id="edit-error" class="error" hidden></p>
+              <button id="save-avatar" type="button">Save</button>
+              <button id="back-edit" class="ghost" type="button">Back</button>
+            </div>
+          </div>
         </section>
-        <section id="menu" class="panel" hidden>
-          <p class="eyebrow">Platform fighter</p>
-          <h1>Tituah</h1>
-          <p id="profile-line" class="blurb">Welcome back.</p>
-          <p class="stage-heading">Select stage</p>
-          <div class="stage-select" role="group" aria-label="Select stage">
-            <button type="button" data-stage="barnyard" data-selected="true">
-              <strong>Barnyard Brawl</strong><span>Sunset farm</span>
+      </div>
+      <div id="audio-mixer" class="audio-mixer" hidden role="dialog" aria-label="Sound">
+        <p class="audio-mixer-title">Sound</p>
+        <div class="audio-mixer-row">
+          <span>Music</span>
+          <button type="button" data-audio-enabled="music" aria-pressed="true">On</button>
+          <input type="range" data-audio-volume="music" min="0" max="100" value="100" aria-label="Music volume" />
+        </div>
+        <div class="audio-mixer-row">
+          <span>SFX</span>
+          <button type="button" data-audio-enabled="sfx" aria-pressed="true">On</button>
+          <input type="range" data-audio-volume="sfx" min="0" max="100" value="100" aria-label="SFX volume" />
+        </div>
+      </div>
+      <div id="exit-confirm" class="audio-mixer exit-confirm" hidden role="dialog" aria-label="Exit match">
+        <p class="audio-mixer-title">Leave Match?</p>
+        <p class="exit-confirm-copy">Your fighter will leave the room and return home.</p>
+        <div class="exit-confirm-actions">
+          <button id="exit-stay" type="button" class="secondary">Stay</button>
+          <button id="exit-match" type="button">Exit</button>
+        </div>
+      </div>
+      <div id="shatter-layer" class="shatter-layer" hidden></div>
+      <div id="touch-controls" aria-hidden="true">
+        <div class="touch-cluster touch-cluster-left">
+          <div id="touch-stick" class="touch-stick" role="application" aria-label="Move">
+            <div class="touch-stick-base"></div>
+            <div class="touch-stick-knob"></div>
+          </div>
+        </div>
+        <div class="touch-cluster touch-cluster-right">
+          <div class="touch-action-row">
+            <button type="button" class="touch-btn touch-btn-down" data-action="down" aria-label="Drop through">
+              <span>Down</span>
             </button>
-            <button type="button" data-stage="fridge" data-selected="false">
-              <strong>Fridge Frenzy</strong><span>Cold storage</span>
-            </button>
-            <button type="button" data-stage="meadow" data-selected="false">
-              <strong>Sky-High Meadow</strong><span>Floating islands</span>
+            <button type="button" class="touch-btn touch-btn-jump" data-action="jump" aria-label="Jump">
+              <span>Jump</span>
             </button>
           </div>
-          <button id="join" type="button">Find match</button>
-          <div class="actions">
-            <button id="open-locker" class="secondary" type="button">Locker</button>
-            <button id="sign-out" class="ghost" type="button">Sign out</button>
-          </div>
-          <p class="hint">A / D move · Space twice to double jump · S / ↓ drops through upper platforms · Hold Z to slap</p>
-          <p id="menu-error" class="error" hidden></p>
-        </section>
-        <section id="locker" class="panel wide" hidden>
-          <p class="eyebrow">Avatar</p>
-          <h2>Locker</h2>
-          <p class="blurb">Equip items you own. Cosmetics use the same sprite IDs as the fighter sheet.</p>
-          <div id="locker-grid" class="locker-grid"></div>
-          <button id="close-locker" class="secondary" type="button">Back</button>
-        </section>
-        <section id="waiting" class="panel" hidden>
-          <p class="eyebrow">Matchmaking</p>
-          <h2>Waiting for opponent</h2>
-          <p class="blurb">Open a second window with another account, or a guest in a private window.</p>
-        </section>
-        <section id="result" class="panel" hidden>
-          <p class="eyebrow">Match over</p>
-          <h2 id="result-title">Winner</h2>
-          <button id="again" type="button">Fight again</button>
-        </section>
+          <button type="button" class="touch-btn touch-btn-slap" data-action="attack" aria-label="Slap">
+            <span>Slap</span>
+          </button>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

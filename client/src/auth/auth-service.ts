@@ -6,7 +6,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import type { UserProfile } from "@tituah/shared";
+import type { FighterColor, UserProfile } from "@tituah/shared";
 import { usersRepository } from "../repositories/users.repository.js";
 import { clientAuth } from "../services/firebase/firebaseClient.js";
 
@@ -42,7 +42,7 @@ export class AuthService {
     return this.ensureProfile(displayName);
   }
 
-  async playAsGuest(displayName: string): Promise<UserProfile> {
+  async playAsGuest(displayName?: string): Promise<UserProfile> {
     await signInAnonymously(clientAuth());
     return this.ensureProfile(displayName);
   }
@@ -60,9 +60,13 @@ export class AuthService {
   }
 
   async ensureProfile(displayName?: string): Promise<UserProfile> {
+    const trimmed = displayName?.trim();
     this.profile = await usersRepository.ensure({
-      displayName: displayName || this.profile?.displayName,
+      displayName: trimmed || this.profile?.displayName,
     });
+    if (trimmed && this.profile.displayName !== trimmed) {
+      this.profile = (await usersRepository.updateSafe({ displayName: trimmed })) ?? this.profile;
+    }
     this.emit();
     return this.profile;
   }
@@ -74,6 +78,37 @@ export class AuthService {
       return null;
     }
     this.profile = (await usersRepository.get(uid)) ?? (await this.ensureProfile());
+    return this.profile;
+  }
+
+  patchAvatar(avatar: UserProfile["avatar"]): void {
+    if (!this.profile) return;
+    this.profile = { ...this.profile, avatar: { ...avatar } };
+  }
+
+  patchProfile(partial: Partial<Pick<UserProfile, "displayName">>): void {
+    if (!this.profile) return;
+    this.profile = {
+      ...this.profile,
+      displayName: partial.displayName?.trim() || this.profile.displayName,
+    };
+  }
+
+  async persistAvatarColor(color: FighterColor): Promise<UserProfile> {
+    if (!this.profile) throw new Error("Not signed in");
+    this.profile = {
+      ...this.profile,
+      avatar: { ...this.profile.avatar, baseAvatarId: color },
+    };
+    const saved = await usersRepository.updateSafe({ baseAvatarId: color });
+    if (saved) this.profile = saved;
+    return this.profile;
+  }
+
+  async saveFighter(data: { displayName?: string; baseAvatarId?: string }): Promise<UserProfile> {
+    this.profile = (await usersRepository.updateSafe(data)) ?? this.profile;
+    this.emit();
+    if (!this.profile) throw new Error("Could not save fighter");
     return this.profile;
   }
 

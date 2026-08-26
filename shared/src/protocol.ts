@@ -3,6 +3,7 @@ import type { Vec2 } from "./math.js";
 
 export type ClientMessage =
   | JoinMessage
+  | ReadyMessage
   | ClientInputMessage
   | AttackStartMessage
   | AttackReleaseMessage;
@@ -11,6 +12,8 @@ export type ServerMessage =
   | WelcomeMessage
   | PlayerJoinedMessage
   | PlayerLeftMessage
+  | PlayerReadyMessage
+  | MatchCountdownMessage
   | MatchStartedMessage
   | ServerSnapshot
   | PlayerHitMessage
@@ -23,6 +26,7 @@ export interface JoinMessage {
   name: string;
   stageId: string;
   idToken: string;
+  playerCount: number;
 }
 
 export interface ErrorMessage {
@@ -44,22 +48,46 @@ export interface AttackReleaseMessage {
   type: "attack_release";
 }
 
+export interface ReadyMessage {
+  type: "ready";
+}
+
 export interface WelcomeMessage {
   type: "welcome";
   playerId: string;
   matchId: string;
   player: PlayerState;
+  players: PlayerState[];
+  maxPlayers: number;
+  readyIds: string[];
+  rematch: boolean;
+  winnerId: string | null;
+  placements: Record<string, number>;
 }
 
 export interface PlayerJoinedMessage {
   type: "player_joined";
   playerId: string;
   name: string;
+  player: PlayerState;
+  readyIds: string[];
+}
+
+export interface PlayerReadyMessage {
+  type: "player_ready";
+  playerId: string;
+  readyIds: string[];
 }
 
 export interface PlayerLeftMessage {
   type: "player_left";
   playerId: string;
+}
+
+export interface MatchCountdownMessage {
+  type: "match_countdown";
+  seconds: number;
+  snapshot: MatchSnapshot;
 }
 
 export interface MatchStartedMessage {
@@ -94,6 +122,9 @@ export interface MatchEndedMessage {
   type: "match_ended";
   winnerId: string | null;
   scores: Record<string, number>;
+  players: PlayerState[];
+  maxPlayers: number;
+  placements: Record<string, number>;
 }
 
 export function parseClientMessage(raw: string): ClientMessage | null {

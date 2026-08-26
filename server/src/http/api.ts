@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { ItemSlot } from "@tituah/shared";
+import { isFighterColor, type ItemSlot } from "@tituah/shared";
 import { inventoryRepository } from "../repositories/inventory.repository.js";
 import { itemsRepository } from "../repositories/items.repository.js";
 import {
@@ -68,10 +68,15 @@ export async function handleApiRequest(
         displayName: stringField(body, "displayName"),
         username: stringField(body, "username"),
       });
+      const requestedColor = stringField(body, "baseAvatarId");
+      if (requestedColor && !isFighterColor(requestedColor)) {
+        throw new Error("Invalid fighter color");
+      }
       const { usersRepository } = await import("../repositories/users.repository.js");
       await usersRepository.updateSafeProfile(tokenUser.uid, {
         displayName: stringField(body, "displayName") ?? profile.displayName,
         username: stringField(body, "username") ?? profile.username,
+        baseAvatarId: requestedColor,
       });
       json(res, 200, { profile: await getUserProfile(tokenUser.uid) });
       return true;
@@ -147,9 +152,22 @@ export async function handleApiRequest(
   return true;
 }
 
+function isAllowedOrigin(origin: string): boolean {
+  if (CORS_ORIGINS.has(origin)) return true;
+  try {
+    const { hostname, protocol } = new URL(origin);
+    return (
+      (hostname === "localhost" || hostname === "127.0.0.1") &&
+      (protocol === "http:" || protocol === "https:")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function setCors(req: IncomingMessage, res: ServerResponse): void {
   const origin = req.headers.origin;
-  if (origin && CORS_ORIGINS.has(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");

@@ -1,6 +1,7 @@
 import { Application, Container, Graphics } from "pixi.js";
 import { GAME_HEIGHT, GAME_WIDTH, type PlayerState } from "@tituah/shared";
 import { PlayerRenderer } from "./player-renderer.js";
+import { pixiOptions } from "./renderer-options.js";
 import { StageRenderer } from "./stages/stage-renderer.js";
 
 export class GameRenderer {
@@ -18,17 +19,19 @@ export class GameRenderer {
   private cameraZoom = 0.86;
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
-    await this.app.init({
-      canvas,
+    await this.app.init(pixiOptions(canvas, {
       width: GAME_WIDTH,
       height: GAME_HEIGHT,
       background: 0x0b1020,
-      antialias: true,
-      resolution: Math.min(window.devicePixelRatio, 2),
-      autoDensity: true,
-    });
-    // Pixi sets inline pixel dimensions for auto-density; the viewport owns the
-    // responsive display size while Pixi retains fixed logical coordinates.
+      autoStart: false,
+    }));
+    this.app.ticker.stop();
+    this.app.ticker.autoStart = false;
+    this.app.stage.eventMode = "none";
+    this.app.stage.interactiveChildren = false;
+    this.world.eventMode = "none";
+    this.world.interactiveChildren = false;
+    // Pixi sets inline pixel dimensions for auto-density; CSS owns the display size.
     canvas.style.width = "100%";
     canvas.style.height = "100%";
     this.app.stage.addChild(this.world);
@@ -67,19 +70,37 @@ export class GameRenderer {
     this.players.showVoidDeath(playerId, time);
   }
 
+  debugFighters(): ReturnType<PlayerRenderer["debugFighters"]> {
+    return this.players.debugFighters();
+  }
+
+  resetForMatch(): void {
+    this.players.resetForMatch();
+  }
+
   render(players: PlayerState[], time: number): void {
     this.stage.update(players, time);
     this.updateCamera(players);
     this.players.draw(players, time);
+    this.app.render();
   }
 
   private updateCamera(players: PlayerState[]): void {
-    const living = players.filter((player) => player.lives > 0);
-    if (living.length) {
-      const minX = Math.min(...living.map((player) => player.position.x));
-      const maxX = Math.max(...living.map((player) => player.position.x));
-      const minY = Math.min(...living.map((player) => player.position.y));
-      const maxY = Math.max(...living.map((player) => player.position.y));
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let living = 0;
+    for (const player of players) {
+      if (player.lives <= 0) continue;
+      living += 1;
+      const { x, y } = player.position;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    if (living) {
       const targetX = Math.max(500, Math.min(780, (minX + maxX) / 2));
       const targetY = Math.max(320, Math.min(430, (minY + maxY) / 2));
       const separation = Math.max((maxX - minX) / 820, (maxY - minY) / 500);

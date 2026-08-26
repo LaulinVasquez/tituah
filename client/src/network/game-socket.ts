@@ -12,6 +12,7 @@ const DEFAULT_URL = defaultSocketUrl();
 
 export class GameSocket {
   private socket: WebSocket | null = null;
+  private generation = 0;
   private readonly url: string;
   private readonly listeners = new Set<(message: ServerMessage) => void>();
   private readonly openListeners = new Set<() => void>();
@@ -27,20 +28,24 @@ export class GameSocket {
 
   connect(): void {
     this.disconnect();
+    const generation = this.generation;
     const socket = new WebSocket(this.url);
     this.socket = socket;
 
     socket.addEventListener("open", () => {
+      if (generation !== this.generation) return;
       for (const listener of this.openListeners) listener();
     });
 
     socket.addEventListener("message", (event) => {
+      if (generation !== this.generation) return;
       const message = parseServerMessage(String(event.data));
       if (!message) return;
       for (const listener of this.listeners) listener(message);
     });
 
     socket.addEventListener("close", () => {
+      if (generation !== this.generation) return;
       for (const listener of this.closeListeners) listener();
     });
   }
@@ -66,6 +71,7 @@ export class GameSocket {
   }
 
   disconnect(): void {
+    this.generation += 1;
     this.socket?.close();
     this.socket = null;
   }

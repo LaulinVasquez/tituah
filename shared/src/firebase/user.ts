@@ -56,7 +56,7 @@ export const DEFAULT_STATS: UserStats = {
 };
 
 export const DEFAULT_AVATAR: AvatarConfiguration = {
-  baseAvatarId: "base_01",
+  baseAvatarId: "orange",
   headAccessoryId: null,
   faceAccessoryId: null,
   bodyAccessoryId: null,
@@ -68,7 +68,7 @@ export const DEFAULT_AVATAR: AvatarConfiguration = {
   effectAccessoryId: null,
 };
 
-export function emptyAvatar(baseAvatarId = "base_01"): AvatarConfiguration {
+export function emptyAvatar(baseAvatarId = "orange"): AvatarConfiguration {
   return { ...DEFAULT_AVATAR, baseAvatarId };
 }
 

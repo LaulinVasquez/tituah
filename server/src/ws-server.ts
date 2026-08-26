@@ -40,6 +40,16 @@ export function startGameServer(port = 8080): { close: () => void } {
     });
   });
 
+  httpServer.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(
+        `Port ${port} is already in use. Free it with: lsof -ti :${port} | xargs kill -9`,
+      );
+      process.exit(1);
+    }
+    throw err;
+  });
+
   httpServer.listen(port, () => {
     console.log(`Tituah game server listening on http://localhost:${port}`);
     console.log(`WebSocket path ws://localhost:${port}/ws`);

@@ -15,15 +15,20 @@ interface VoidDeathEffect {
   color: number;
 }
 
+const SLOT_COLORS = [0xff7a45, 0x5b9dff, 0x3ecf8e, 0xc084fc];
+const SLOT_BADGE = [0xc84f22, 0x216bc4, 0x1a9a66, 0x8b4fd4];
 const IMPACT_DURATION = 0.24;
 const VOID_EFFECT_DURATION = 0.72;
 
 export class PlayerRenderer {
   private readonly labels = new Map<string, { container: Container; text: Text }>();
+  private readonly names = new Map<string, Text>();
   private readonly fighters = new Map<string, FighterSprite>();
   private readonly lastPlayers = new Map<string, PlayerState>();
   private readonly impacts: ImpactEffect[] = [];
   private readonly voidDeaths: VoidDeathEffect[] = [];
+  private impactsDrawn = false;
+  private voidDrawn = false;
 
   constructor(
     private readonly fighterLayer: Container,
@@ -32,12 +37,30 @@ export class PlayerRenderer {
     private readonly labelLayer: Container,
   ) {
     this.fighterLayer.sortableChildren = true;
+    this.fighterLayer.eventMode = "none";
+    this.fighterLayer.interactiveChildren = false;
+    this.labelLayer.eventMode = "none";
+    this.labelLayer.interactiveChildren = false;
+    this.impactLayer.eventMode = "none";
+    this.voidEffectLayer.eventMode = "none";
   }
 
   async load(): Promise<void> {
     const probe = new FighterSprite("preload");
     await probe.load();
     probe.destroy();
+  }
+
+  debugFighters(): ReturnType<FighterSprite["debugState"]>[] {
+    return [...this.fighters.values()].map((fighter) => fighter.debugState());
+  }
+
+  resetForMatch(): void {
+    for (const fighter of this.fighters.values()) {
+      fighter.resetForMatch();
+    }
+    this.impacts.length = 0;
+    this.voidDeaths.length = 0;
   }
 
   showHit(hit: PlayerHitMessage, time: number): void {
@@ -71,7 +94,7 @@ export class PlayerRenderer {
     this.voidDeaths.push({
       x: Math.max(90, Math.min(1190, x)),
       startedAt: time,
-      color: player.spawnIndex % 2 === 0 ? 0xff7a45 : 0x5b9dff,
+      color: SLOT_COLORS[player.spawnIndex % SLOT_COLORS.length],
     });
   }
 
@@ -83,12 +106,18 @@ export class PlayerRenderer {
       this.lastPlayers.set(player.id, player);
       seen.add(player.id);
       let fighter = this.fighters.get(player.id);
+      const reused = Boolean(fighter);
       if (!fighter) {
         fighter = new FighterSprite(player.id);
         void fighter.load();
         this.fighterLayer.addChild(fighter);
         this.fighters.set(player.id, fighter);
       }
+      // #region agent log
+      if (!reused || fighter.visible === false) {
+        fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:reused?'A':'C',location:'player-renderer.ts:draw',message:reused?'reusing fighter sprite':'created fighter sprite',data:{playerId:player.id,reused,destroyed:fighter.destroyed,visible:fighter.visible,childCount:fighter.children.length,time,lives:player.lives},timestamp:Date.now()})}).catch(()=>{});
+      }
+      // #endregion
       fighter.update(player, time);
 
       if (player.lives > 0) {
@@ -101,10 +130,15 @@ export class PlayerRenderer {
       if (!visibleLabels.has(id)) {
         label.container.destroy({ children: true });
         this.labels.delete(id);
+        this.names.get(id)?.destroy();
+        this.names.delete(id);
       }
     }
     for (const [id, fighter] of this.fighters) {
       if (!seen.has(id)) {
+        // #region agent log
+        fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'D',location:'player-renderer.ts:destroy',message:'destroying unused fighter',data:{playerId:id,time},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         fighter.destroy();
         this.fighters.delete(id);
       }
@@ -114,6 +148,14 @@ export class PlayerRenderer {
   }
 
   private drawImpacts(time: number): void {
+    if (this.impacts.length === 0) {
+      if (this.impactsDrawn) {
+        this.impactLayer.clear();
+        this.impactsDrawn = false;
+      }
+      return;
+    }
+    this.impactsDrawn = true;
     this.impactLayer.clear();
     for (let index = this.impacts.length - 1; index >= 0; index -= 1) {
       const impact = this.impacts[index];
@@ -146,6 +188,14 @@ export class PlayerRenderer {
   }
 
   private drawVoidDeaths(time: number): void {
+    if (this.voidDeaths.length === 0) {
+      if (this.voidDrawn) {
+        this.voidEffectLayer.clear();
+        this.voidDrawn = false;
+      }
+      return;
+    }
+    this.voidDrawn = true;
     this.voidEffectLayer.clear();
     for (let index = this.voidDeaths.length - 1; index >= 0; index -= 1) {
       const effect = this.voidDeaths[index];
@@ -180,15 +230,37 @@ export class PlayerRenderer {
   }
 
   private drawLabel(player: PlayerState): void {
+    let name = this.names.get(player.id);
+    if (!name) {
+      name = new Text({
+        text: player.name,
+        style: {
+          fill: 0xedf1f7,
+          fontFamily: "Avenir Next, sans-serif",
+          fontSize: 12,
+          fontWeight: "700",
+        },
+      });
+      name.anchor.set(0.5, 1);
+      name.eventMode = "none";
+      this.labelLayer.addChild(name);
+      this.names.set(player.id, name);
+    } else if (name.text !== player.name) {
+      name.text = player.name;
+    }
+    name.x = player.position.x;
+    name.y = player.position.y - PLAYER_HEIGHT - 58;
+
     let badge = this.labels.get(player.id);
     if (!badge) {
       const container = new Container();
+      container.eventMode = "none";
       const background = new Graphics()
         .roundRect(-21, -12, 42, 24, 9)
-        .fill({ color: player.spawnIndex % 2 === 0 ? 0xc84f22 : 0x216bc4, alpha: 0.94 })
+        .fill({ color: SLOT_BADGE[player.spawnIndex % SLOT_BADGE.length], alpha: 0.94 })
         .stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
       const text = new Text({
-        text: "",
+        text: `${Math.round(player.damagePercent)}%`,
         style: {
           fill: 0xffffff,
           fontFamily: "Avenir Next, sans-serif",
@@ -197,12 +269,15 @@ export class PlayerRenderer {
         },
       });
       text.anchor.set(0.5);
+      text.eventMode = "none";
       container.addChild(background, text);
       this.labelLayer.addChild(container);
       badge = { container, text };
       this.labels.set(player.id, badge);
+    } else {
+      const label = `${Math.round(player.damagePercent)}%`;
+      if (badge.text.text !== label) badge.text.text = label;
     }
-    badge.text.text = `${Math.round(player.damagePercent)}%`;
     badge.container.x = player.position.x + 38;
     badge.container.y = player.position.y - PLAYER_HEIGHT - 40;
   }

@@ -1,12 +1,13 @@
 import { Assets, ColorMatrixFilter, Container, Rectangle, Sprite, Texture } from "pixi.js";
 import type { PlayerState } from "@tituah/shared";
-import { appearanceFromAvatar, colorHue, type AccessorySprite } from "./appearance.js";
+import { appearanceFromAvatar, appearanceKey, colorHue, type FighterAppearance } from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
   FIGHTER_VISUAL_HEIGHT,
   RUNNING_SHEET_URL,
   type FighterAnimation,
+  type FighterFrame,
 } from "./fighter-atlas.js";
 
 const RUN_THRESHOLD = 24;
@@ -40,9 +41,6 @@ function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
 
 export class FighterSprite extends Container {
   private readonly sprite = new Sprite();
-  private readonly accessoryLayer = new Container();
-  private readonly accessorySprites = new Map<string, Sprite>();
-  private sheet!: Texture;
   private textures!: Record<FighterAnimation, Texture[]>;
   private animation: FighterAnimation = "idle";
   private animationStartedAt = 0;
@@ -52,18 +50,24 @@ export class FighterSprite extends Container {
   private hitDirection = 1;
   private hitStrength = 1;
   private koUntil = 0;
+  private koHoldFrame = false;
   private hiddenUntil = 0;
   private colorKey = "";
+  private appearanceCacheKey = "";
+  private appearance: FighterAppearance | null = null;
+  private lastFrameIndex = -1;
+  private lastFrameAnimation: FighterAnimation | null = null;
 
   constructor(readonly playerId: string) {
     super();
-    this.addChild(this.sprite, this.accessoryLayer);
+    this.addChild(this.sprite);
     this.sprite.anchor.set(0.5, 1);
+    this.eventMode = "none";
+    this.interactiveChildren = false;
   }
 
   async load(): Promise<void> {
     this.textures = await loadTextures();
-    this.sheet = await Assets.load<Texture>(FIGHTER_SHEET_URL);
     this.sprite.texture = this.textures.idle[0];
   }
 
@@ -75,13 +79,48 @@ export class FighterSprite extends Container {
     this.setAnimation("hit", time, true);
   }
 
-  showKo(time: number): void {
+  showKo(time: number, holdLastFrame = false): void {
+    this.koHoldFrame = holdLastFrame;
     this.koUntil = Math.max(this.koUntil, time + KO_DURATION);
     this.setAnimation("ko", time, true);
   }
 
   showVoidDeath(time: number): void {
     this.hiddenUntil = Math.max(this.hiddenUntil, time + RESPAWN_HIDE_DURATION);
+  }
+
+  debugState(): {
+    playerId: string;
+    hiddenUntil: number;
+    koUntil: number;
+    animationStartedAt: number;
+    animation: FighterAnimation;
+    visible: boolean;
+  } {
+    return {
+      playerId: this.playerId,
+      hiddenUntil: this.hiddenUntil,
+      koUntil: this.koUntil,
+      animationStartedAt: this.animationStartedAt,
+      animation: this.animation,
+      visible: this.visible,
+    };
+  }
+
+  resetForMatch(): void {
+    this.hiddenUntil = 0;
+    this.koUntil = 0;
+    this.koHoldFrame = false;
+    this.hitUntil = 0;
+    this.hitStartedAt = 0;
+    this.animationStartedAt = 0;
+    this.lastFrameIndex = -1;
+    this.lastFrameAnimation = null;
+    this.wasGrounded = true;
+    this.animation = "idle";
+    this.visible = true;
+    this.alpha = 1;
+    this.rotation = 0;
   }
 
   update(player: PlayerState, time: number): void {
@@ -92,29 +131,25 @@ export class FighterSprite extends Container {
     }
     const next = this.chooseAnimation(player, time);
     this.setAnimation(next, time);
-    this.setFrame(time);
-
-    const definition = FIGHTER_ANIMATIONS[this.animation];
     const frameIndex = this.frameIndex(time);
+    const definition = FIGHTER_ANIMATIONS[this.animation];
     const frame = definition.frames[frameIndex] ?? definition.frames[0];
     const scale = FIGHTER_VISUAL_HEIGHT / frame.height;
 
-    this.sprite.scale.set(scale * player.facing, scale);
-    this.sprite.position.set((frame.offsetX ?? 0) * scale * player.facing, frame.offsetY ?? 0);
-    const appearance = appearanceFromAvatar(player.avatar, player.spawnIndex);
-    this.setColorVariant(appearance.color);
-    this.syncAccessories(appearance.accessories, player.facing);
+    this.syncAppearance(player);
+    this.setFrame(frameIndex, frame, scale, player.facing);
     this.applyHitMotion(time);
     this.zIndex = player.position.y
       + (player.attackState.type === "active" ? 1_000 : 0)
       + (time < this.hitUntil ? 1_100 : 0);
     this.alpha = player.invulnerableUntil > time && Math.floor(time * 12) % 2 === 0 ? 0.35 : 1;
-    this.visible = time >= this.hiddenUntil && (player.lives > 0 || time < this.koUntil);
+    this.visible = time >= this.hiddenUntil
+      && (player.lives > 0 || time < this.koUntil || this.koHoldFrame);
     this.wasGrounded = player.grounded;
   }
 
   private chooseAnimation(player: PlayerState, time: number): FighterAnimation {
-    if (time < this.koUntil) return "ko";
+    if (this.koHoldFrame || time < this.koUntil) return "ko";
     if (time < this.hitUntil) return "hit";
     if (player.attackState.type === "charging") return "slapCharge";
     if (player.attackState.type === "active") return "slapAttack";
@@ -132,6 +167,7 @@ export class FighterSprite extends Container {
     if (!restart && animation === this.animation) return;
     this.animation = animation;
     this.animationStartedAt = time;
+    this.lastFrameIndex = -1;
   }
 
   private frameIndex(time: number): number {
@@ -142,16 +178,35 @@ export class FighterSprite extends Container {
       : Math.min(elapsedFrames, definition.frames.length - 1);
   }
 
-  private setFrame(time: number): void {
-    this.sprite.texture = this.textures[this.animation][this.frameIndex(time)];
+  private setFrame(index: number, frame: FighterFrame, scale: number, facing: 1 | -1): void {
+    const sameFrame = index === this.lastFrameIndex && this.animation === this.lastFrameAnimation;
+    if (!sameFrame) {
+      this.sprite.texture = this.textures[this.animation][index];
+    }
+    this.lastFrameIndex = index;
+    this.lastFrameAnimation = this.animation;
+
+    this.sprite.scale.set(scale * facing, scale);
+    this.sprite.anchor.set(0.5, 1);
+    this.sprite.position.set((frame.offsetX ?? 0) * scale * facing, frame.offsetY ?? 0);
+    this.setColorVariant(this.appearance?.color ?? "orange");
   }
 
-  private setColorVariant(color: ReturnType<typeof appearanceFromAvatar>["color"]): void {
+  private syncAppearance(player: PlayerState): void {
+    const key = appearanceKey(player.avatar);
+    if (key === this.appearanceCacheKey && this.appearance) return;
+    this.appearanceCacheKey = key;
+    this.appearance = appearanceFromAvatar(player.avatar);
+    this.lastFrameIndex = -1;
+    this.lastFrameAnimation = null;
+  }
+
+  private setColorVariant(color: NonNullable<FighterAppearance>["color"]): void {
     if (color === this.colorKey) return;
     this.colorKey = color;
     const hue = colorHue(color);
     if (hue == null) {
-      this.sprite.filters = [];
+      this.sprite.filters = null;
       return;
     }
     const filter = new ColorMatrixFilter();
@@ -160,41 +215,9 @@ export class FighterSprite extends Container {
     this.sprite.filters = [filter];
   }
 
-  private syncAccessories(accessories: AccessorySprite[], facing: 1 | -1): void {
-    if (!this.sheet) return;
-    const seen = new Set<string>();
-    for (const accessory of accessories) {
-      seen.add(accessory.id);
-      let sprite = this.accessorySprites.get(accessory.id);
-      if (!sprite) {
-        sprite = new Sprite(
-          new Texture({
-            source: this.sheet.source,
-            frame: new Rectangle(
-              accessory.frame.x,
-              accessory.frame.y,
-              accessory.frame.width,
-              accessory.frame.height,
-            ),
-          }),
-        );
-        sprite.anchor.set(0.5, 1);
-        this.accessoryLayer.addChild(sprite);
-        this.accessorySprites.set(accessory.id, sprite);
-      }
-      const accessoryScale = 42 / accessory.frame.height;
-      sprite.scale.set(accessoryScale * facing, accessoryScale);
-      sprite.position.set(accessory.anchorX * facing, accessory.anchorY);
-      sprite.visible = true;
-    }
-    for (const [id, sprite] of this.accessorySprites) {
-      if (!seen.has(id)) sprite.visible = false;
-    }
-  }
-
   private applyHitMotion(time: number): void {
     if (time >= this.hitUntil) {
-      this.rotation = 0;
+      if (this.rotation !== 0) this.rotation = 0;
       return;
     }
     const progress = Math.min(1, Math.max(0, (time - this.hitStartedAt) / HIT_DURATION));

@@ -1,8 +1,9 @@
 import {
   clonePlayerState,
   DEFAULT_STAGE,
+  parsePlayerCount,
   TICK_DT,
-  type ItemSlot,
+  type FighterColor,
   type PlayerState,
   type ServerMessage,
 } from "@tituah/shared";
@@ -12,10 +13,10 @@ import { GameSocket } from "../network/game-socket.js";
 import { MessageHandler } from "../network/message-handler.js";
 import { InterpolationManager } from "../prediction/interpolation-manager.js";
 import { PredictionManager } from "../prediction/prediction-manager.js";
-import { inventoryRepository } from "../repositories/inventory.repository.js";
-import { itemsRepository } from "../repositories/items.repository.js";
 import { GameRenderer } from "../rendering/game-renderer.js";
 import { Ui } from "../ui.js";
+import { audio } from "../audio/audio-manager.js";
+import { sfx } from "../audio/sfx-director.js";
 import { GameState } from "./game-state.js";
 
 export class GameClient {
@@ -31,6 +32,9 @@ export class GameClient {
   private accumulator = 0;
   private lastFrame = performance.now();
   private localTime = 0;
+  private seekingMatch = false;
+  private inRoom = false;
+  private colorSave: Promise<void> = Promise.resolve();
 
   async start(canvas: HTMLCanvasElement): Promise<void> {
     this.input = new InputManager(canvas);
@@ -42,35 +46,63 @@ export class GameClient {
     );
     this.socket.onMessage((message) => this.messages.handle(message));
     this.socket.onOpen(() => {
+      if (!this.seekingMatch) return;
       void this.sendJoin();
     });
     this.socket.onClose(() => {
       if (this.state.snapshot?.status === "playing") {
+        this.inRoom = false;
+        this.seekingMatch = false;
         this.ui.showMenu(authService.profile);
+        return;
+      }
+      if (this.seekingMatch || this.inRoom) {
+        this.seekingMatch = false;
+        this.inRoom = false;
+        this.ui.showMenu(authService.profile, "Connection closed.");
       }
     });
 
-    this.ui.onSignIn(() => void this.authenticate("in"));
-    this.ui.onSignUp(() => void this.authenticate("up"));
-    this.ui.onGuest(() => void this.authenticate("guest"));
+    this.ui.onChooseGuest(() => void this.authenticate("guest", this.ui.chooseGuestButton));
+    this.ui.onChooseLogin(() => this.ui.showLogin());
+    this.ui.onBackToLanding(() => this.ui.showAuth());
+    this.ui.onSignIn(() => void this.authenticate("in", this.ui.signInButton));
+    this.ui.onSignUp(() => void this.authenticate("up", this.ui.signUpButton));
     this.ui.onSignOut(() => void this.signOut());
     this.ui.onJoin(() => void this.connect());
-    this.ui.onAgain(() => void this.connect());
-    this.ui.onOpenLocker(() => void this.openLocker());
-    this.ui.onCloseLocker(() => this.ui.showMenu(authService.profile));
+    this.ui.onCancelWait(() => this.leaveRoom());
+    this.ui.onAgain(() => this.readyUp());
+    this.ui.onResultBack(() => this.leaveRoom());
+    this.ui.onExitMatch(() => this.leaveRoom());
+    this.ui.onEditAvatar(() => void this.openEditor());
+    this.ui.onSaveAvatar(() => void this.saveFighter());
+    this.ui.onSelectColor((color) => this.persistColor(color));
+    this.ui.onBackFromEdit(() => this.ui.closeEditor());
 
     authService.start();
     authService.subscribe(() => {
       if (this.state.playing()) return;
-      if (authService.user && authService.profile) {
-        this.ui.showMenu(authService.profile);
-      } else if (!authService.user) {
+      if (!authService.user) {
         this.ui.showAuth();
+        this.ui.setPreview(null);
+        return;
+      }
+      if (!authService.profile) return;
+      void this.refreshPreview();
+      if (this.ui.isLoading) return;
+      const pane = this.ui.currentPane;
+      if (pane === "waiting" || pane === "result" || this.ui.editing) return;
+      if (pane === "login") return;
+      if (pane === "landing" || pane === "menu") {
+        this.ui.showMenu(authService.profile, undefined, this.guestSession());
       }
     });
 
     await this.renderer.init(canvas);
-    this.ui.showAuth();
+    await this.ui.startFighterPreview();
+    void audio.load();
+    window.addEventListener("pointerdown", () => void audio.unlock());
+    if (!authService.user) this.ui.showAuth();
     this.loop();
   }
 
@@ -81,104 +113,214 @@ export class GameClient {
         return;
       }
       this.ui.rememberName();
-      await authService.ensureProfile(this.ui.displayName());
+      this.ui.setLoading(true);
+      await this.colorSave.catch(() => undefined);
+      await authService.ensureProfile(authService.profile?.displayName ?? this.ui.displayName());
+      this.ui.setLoading(false);
+      this.seekingMatch = true;
       this.ui.showWaiting();
       this.state.snapshot = null;
       this.state.predicted = null;
       this.state.winnerId = null;
+      // #region agent log
+      fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'E',location:'game-client.ts:connect',message:'connect / play again',data:{socketConnected:this.socket.connected,leftoverFighters:this.renderer.debugFighters()},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      if (this.socket.connected) {
+        void this.sendJoin();
+        return;
+      }
       this.socket.connect();
     } catch (error) {
+      this.seekingMatch = false;
+      this.inRoom = false;
+      this.ui.setLoading(false);
       this.ui.showMenu(authService.profile, messageOf(error));
     }
   }
 
+  private leaveRoom(): void {
+    this.input.reset();
+    this.seekingMatch = false;
+    this.inRoom = false;
+    this.socket.disconnect();
+    this.ui.showMenu(authService.profile);
+  }
+
+  private readyUp(): void {
+    if (!this.inRoom || !this.socket.connected) return;
+    this.ui.markLocalReady();
+    this.socket.send({ type: "ready" });
+  }
+
   private async sendJoin(): Promise<void> {
     try {
+      if (!this.seekingMatch) return;
       const idToken = await authService.idToken();
+      if (!this.seekingMatch) return;
       this.socket.send({
         type: "join",
         name: authService.profile?.displayName ?? this.ui.displayName(),
         idToken,
         stageId: this.ui.stageId(),
+        playerCount: this.ui.playerCount(),
       });
     } catch (error) {
-      this.ui.showAuth(messageOf(error));
+      this.seekingMatch = false;
+      this.inRoom = false;
+      if (authService.profile) this.ui.showMenu(authService.profile, messageOf(error));
+      else this.ui.showAuth(messageOf(error));
     }
   }
 
-  private async authenticate(mode: "in" | "up" | "guest"): Promise<void> {
+  private async authenticate(mode: "in" | "up" | "guest", impact?: HTMLElement): Promise<void> {
+    if (this.ui.isLoading) return;
     try {
-      const name = this.ui.displayName();
+      if (impact) await this.ui.slapToward(impact);
+      this.ui.setLoading(true);
       if (mode === "guest") {
-        await authService.playAsGuest(name);
+        await authService.playAsGuest();
       } else if (mode === "up") {
-        await authService.signUp(this.ui.email(), this.ui.password(), name);
+        await authService.signUp(this.ui.email(), this.ui.password(), this.ui.displayName("login"));
       } else {
         await authService.signIn(this.ui.email(), this.ui.password());
       }
       this.ui.rememberName();
-      this.ui.showMenu(authService.profile);
+      this.ui.showMenu(authService.profile, undefined, this.guestSession());
+      void this.refreshPreview();
     } catch (error) {
       this.ui.showAuth(messageOf(error));
+    } finally {
+      this.ui.setLoading(false);
     }
   }
 
   private async signOut(): Promise<void> {
+    this.seekingMatch = false;
+    this.inRoom = false;
     this.socket.disconnect();
     await authService.signOut();
+    this.ui.setPreview(null);
     this.ui.showAuth();
   }
 
-  private async openLocker(): Promise<void> {
-    const profile = authService.profile ?? (await authService.refreshProfile());
+  private guestSession(): boolean {
+    return authService.user?.isAnonymous === true;
+  }
+
+  private async refreshPreview(): Promise<void> {
+    const profile = authService.profile;
     if (!profile) {
-      this.ui.showAuth("Sign in to open the locker.");
+      this.ui.setPreview(null);
       return;
     }
-    const [items, inventory] = await Promise.all([
-      itemsRepository.listEnabled(),
-      inventoryRepository.list(profile.uid),
-    ]);
-    this.ui.showLocker(
-      profile,
-      items,
-      inventory,
-      (itemId) => void this.equip(itemId),
-      (slot) => void this.unequip(slot),
-    );
+    this.ui.setPreview(profile, this.guestSession());
   }
 
-  private async equip(itemId: string): Promise<void> {
-    await inventoryRepository.equip(itemId);
-    await authService.refreshProfile();
-    await this.openLocker();
+  private async saveFighter(): Promise<void> {
+    const name = this.ui.displayName("edit");
+    const color = this.ui.fighterColor();
+    this.ui.rememberName(name);
+    if (authService.profile) {
+      authService.patchProfile({ displayName: name });
+      authService.patchAvatar({ ...authService.profile.avatar, baseAvatarId: color });
+    }
+    this.ui.showMenu(authService.profile, undefined, this.guestSession());
+    try {
+      await this.colorSave.catch(() => undefined);
+      await authService.saveFighter({ displayName: name, baseAvatarId: color });
+      void this.refreshPreview();
+    } catch (error) {
+      this.ui.showMenu(authService.profile, messageOf(error), this.guestSession());
+    }
   }
 
-  private async unequip(slot: ItemSlot): Promise<void> {
-    await inventoryRepository.unequip(slot);
-    await authService.refreshProfile();
-    await this.openLocker();
+  private persistColor(color: FighterColor): void {
+    if (!authService.profile) return;
+    this.colorSave = this.colorSave
+      .catch(() => undefined)
+      .then(async () => {
+        await authService.persistAvatarColor(color);
+      });
+  }
+
+  private async openEditor(error?: string): Promise<void> {
+    const profile = authService.profile ?? (await authService.refreshProfile().catch(() => null));
+    this.ui.showEditor(profile, error);
   }
 
   private onServerMessage(message: ServerMessage): void {
     if (message.type === "error") {
+      this.seekingMatch = false;
+      this.inRoom = false;
       this.socket.disconnect();
       this.ui.showMenu(authService.profile, message.message ?? "Could not join match.");
       return;
     }
     if (message.type === "player_hit") {
       this.renderer.showHit(message, this.localTime);
+      sfx.hit(message.charge);
     }
     if (message.type === "player_respawn") {
       this.renderer.showVoidDeath(message.playerId, this.localTime);
+      sfx.respawn();
     }
     if (message.type === "welcome") {
-      this.ui.showWaiting();
+      if (!this.seekingMatch) return;
+      this.inRoom = true;
+      const maxPlayers = parsePlayerCount(message.maxPlayers);
+      if (message.rematch) {
+        this.ui.showResult(
+          message.winnerId,
+          message.player,
+          message.players,
+          maxPlayers,
+          message.readyIds,
+          message.placements ?? {},
+        );
+        return;
+      }
+      const others = message.players.filter((player) => player.id !== message.playerId);
+      if (others.length > 0) {
+        void this.ui.showRoster(message.player, message.players, maxPlayers, "join-run");
+      } else {
+        this.ui.showWaiting(message.player.spawnIndex, maxPlayers);
+      }
+    }
+    if (message.type === "player_joined") {
+      if (this.state.playing()) return;
+      if (!this.inRoom && !this.seekingMatch) return;
+      this.ui.addWaitingPlayer(message.player, message.readyIds);
+    }
+    if (message.type === "player_left") {
+      if (this.state.playing()) return;
+      if (!this.inRoom && !this.seekingMatch) return;
+      this.ui.removeWaitingPlayer(message.playerId);
+    }
+    if (message.type === "player_ready") {
+      if (this.state.playing()) return;
+      if (!this.inRoom && !this.seekingMatch) return;
+      this.ui.setReadyIds(message.readyIds);
+    }
+    if (message.type === "match_countdown") {
+      if (this.state.playing()) return;
+      if (!this.inRoom && !this.seekingMatch) return;
+      this.ui.showCountdown(message.seconds);
+      sfx.countdown(message.seconds);
     }
     if (message.type === "match_started") {
+      this.input.reset();
+      this.seekingMatch = false;
+      this.inRoom = true;
+      sfx.reset();
+      sfx.fight();
       this.renderer.setStage(message.snapshot.stageId);
       this.localTime = this.state.snapshot?.time ?? 0;
       this.accumulator = 0;
+      const leftoverFighters = this.renderer.debugFighters();
+      this.renderer.resetForMatch();
+      // #region agent log
+      fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'A',location:'game-client.ts:match_started',message:'match started',data:{localTime:this.localTime,snapshotTime:this.state.snapshot?.time ?? null,playerIds:(this.state.snapshot?.players ?? []).map((p)=>p.id),status:this.state.snapshot?.status ?? null,leftoverFighters,resetFighters:this.renderer.debugFighters()},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (this.state.localPlayerId && this.state.snapshot) {
         this.prediction.reset(this.state.snapshot, this.state.localPlayerId);
       }
@@ -189,15 +331,28 @@ export class GameClient {
       if (reconciled) this.state.predicted = reconciled;
     }
     if (message.type === "match_ended") {
-      for (const player of this.state.snapshot?.players ?? []) {
-        if (player.id !== this.state.winnerId) {
-          this.renderer.showVoidDeath(player.id, this.localTime);
-        }
+      this.input.reset();
+      // #region agent log
+      fetch('http://127.0.0.1:7567/ingest/70db4f25-7ec1-4ecb-b370-9dba08d47b0a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'95172e'},body:JSON.stringify({sessionId:'95172e',hypothesisId:'A',location:'game-client.ts:match_ended',message:'match ended',data:{localTime:this.localTime,snapshotTime:this.state.snapshot?.time ?? null,winnerId:this.state.winnerId,playerIds:(this.state.snapshot?.players ?? []).map((p)=>p.id)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      sfx.ko();
+      audio.stop("run");
+      this.inRoom = true;
+      this.seekingMatch = true;
+      const players = message.players.length > 0 ? message.players : this.state.snapshot?.players ?? [];
+      for (const player of players) {
+        this.state.addRemoteName(player.id, player.name);
       }
-      const winner = this.state.winnerId
-        ? this.state.names.get(this.state.winnerId) ?? "Someone"
-        : "Nobody";
-      this.ui.showResult(`${winner} wins`);
+      const localId = this.state.localPlayerId;
+      const local = players.find((player) => player.id === localId) ?? null;
+      this.ui.showResult(
+        this.state.winnerId,
+        local,
+        players,
+        parsePlayerCount(message.maxPlayers || this.state.snapshot?.maxPlayers),
+        [],
+        message.placements ?? {},
+      );
       void authService.refreshProfile();
     }
   }
@@ -206,14 +361,18 @@ export class GameClient {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
-    this.accumulator += dt;
 
-    while (this.accumulator >= TICK_DT) {
-      this.step();
-      this.accumulator -= TICK_DT;
+    if (!document.hidden && this.state.playing()) {
+      this.accumulator += dt;
+      while (this.accumulator >= TICK_DT) {
+        this.step();
+        this.accumulator -= TICK_DT;
+      }
+      this.draw();
+    } else {
+      this.accumulator = 0;
     }
 
-    this.draw();
     requestAnimationFrame(this.loop);
   };
 
@@ -235,6 +394,7 @@ export class GameClient {
     }
     const predicted = this.prediction.apply(clonePlayerState(base), input, this.localTime);
     this.state.predicted = predicted;
+    sfx.observe(predicted);
   }
 
   private draw(): void {

@@ -9,24 +9,41 @@ export class StageRenderer {
   readonly distant = new Container();
   readonly props = new Container();
   readonly platforms = new Container();
-  readonly shadows = new Graphics();
-  readonly foreground = new Graphics();
+  readonly shadows = new Container();
+  readonly foreground = new Container();
 
   private readonly backdrop = new Sprite();
   private readonly voidGfx = new Graphics();
   private readonly platformGfx = new Graphics();
-  private readonly particles: AmbientParticle[] = Array.from({ length: 24 }, (_, index) => ({
+  private readonly particles: AmbientParticle[] = Array.from({ length: 16 }, (_, index) => ({
     x: (index * 197) % 1280, y: 80 + ((index * 83) % 560), size: 1.5 + (index % 3),
     speed: 6 + (index % 5) * 3, phase: index * 0.71,
   }));
+  private readonly particleSprites: Sprite[] = [];
+  private readonly shadowSprites: Sprite[] = [];
   private stageId: StageId = "barnyard";
   private map: StageMap = getStage(this.stageId);
 
   constructor() {
     this.backdrop.anchor.set(0.5);
+    this.far.eventMode = "none";
+    this.distant.eventMode = "none";
+    this.props.eventMode = "none";
+    this.platforms.eventMode = "none";
+    this.shadows.eventMode = "none";
+    this.foreground.eventMode = "none";
     this.far.addChild(this.backdrop);
     this.distant.addChild(this.voidGfx);
     this.platforms.addChild(this.platformGfx);
+    for (const particle of this.particles) {
+      const sprite = new Sprite(Texture.WHITE);
+      sprite.anchor.set(0.5);
+      sprite.width = particle.size * 2;
+      sprite.height = particle.size * 2;
+      sprite.alpha = 0.18;
+      this.foreground.addChild(sprite);
+      this.particleSprites.push(sprite);
+    }
   }
 
   async load(): Promise<void> {
@@ -46,10 +63,13 @@ export class StageRenderer {
     this.backdrop.scale.set(backgroundScale);
     this.backdrop.position.set(GAME_WIDTH / 2, GAME_HEIGHT / 2);
 
+    this.voidGfx.cacheAsTexture(false);
     this.voidGfx.clear()
       .rect(-80, 570, 1440, 190).fill({ color: config.void, alpha: 0.3 })
       .rect(-80, 665, 1440, 95).fill({ color: 0x02050a, alpha: 0.28 });
+    this.voidGfx.cacheAsTexture(true);
 
+    this.platformGfx.cacheAsTexture(false);
     this.platformGfx.clear();
     for (const platform of this.map.platforms) {
       const radius = Math.min(12, platform.height / 2);
@@ -63,28 +83,53 @@ export class StageRenderer {
         .rect(platform.x + 10, platform.y + platform.height - 6, platform.width - 20, 6)
         .fill({ color: config.platformEdge, alpha: 0.9 });
     }
+    this.platformGfx.cacheAsTexture(true);
+
+    for (const sprite of this.particleSprites) {
+      sprite.tint = config.particle;
+    }
   }
 
   update(players: PlayerState[], time: number): void {
-    const focusX = players.length
-      ? players.reduce((sum, player) => sum + player.position.x, 0) / players.length
-      : this.map.width / 2;
+    let focusX = this.map.width / 2;
+    if (players.length) {
+      let sum = 0;
+      for (const player of players) sum += player.position.x;
+      focusX = sum / players.length;
+    }
     this.far.x = -(focusX - this.map.width / 2) * 0.035;
 
-    this.shadows.clear();
+    let shadowCount = 0;
     for (const player of players) {
       if (!player.grounded || player.lives <= 0) continue;
-      this.shadows.ellipse(player.position.x, player.position.y + 5, 31, 8)
-        .fill({ color: 0x05070d, alpha: 0.3 });
+      const sprite = this.shadowAt(shadowCount);
+      sprite.position.set(player.position.x, player.position.y + 5);
+      sprite.visible = true;
+      shadowCount += 1;
+    }
+    for (let index = shadowCount; index < this.shadowSprites.length; index += 1) {
+      this.shadowSprites[index].visible = false;
     }
 
-    const config = STAGE_VISUALS[this.stageId];
-    this.foreground.clear();
-    for (const particle of this.particles) {
-      const x = (particle.x + time * particle.speed) % 1320 - 20;
-      const y = particle.y + Math.sin(time * 0.7 + particle.phase) * 12;
-      this.foreground.circle(x, y, particle.size)
-        .fill({ color: config.particle, alpha: 0.18 });
+    for (let index = 0; index < this.particles.length; index += 1) {
+      const particle = this.particles[index];
+      const sprite = this.particleSprites[index];
+      sprite.x = (particle.x + time * particle.speed) % 1320 - 20;
+      sprite.y = particle.y + Math.sin(time * 0.7 + particle.phase) * 12;
     }
+  }
+
+  private shadowAt(index: number): Sprite {
+    let sprite = this.shadowSprites[index];
+    if (sprite) return sprite;
+    sprite = new Sprite(Texture.WHITE);
+    sprite.anchor.set(0.5);
+    sprite.tint = 0x05070d;
+    sprite.alpha = 0.3;
+    sprite.width = 62;
+    sprite.height = 16;
+    this.shadows.addChild(sprite);
+    this.shadowSprites[index] = sprite;
+    return sprite;
   }
 }

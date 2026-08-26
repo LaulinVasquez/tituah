@@ -17,7 +17,7 @@ export class MessageHandler {
         this.state.setLocalPlayer(message.playerId, message.matchId, message.player);
         break;
       case "player_joined":
-        this.state.addRemoteName(message.playerId, message.name);
+        this.state.addRemoteName(message.playerId, message.player.name);
         break;
       case "match_started":
         this.prediction.setMap(getStage(message.snapshot.stageId));
@@ -41,6 +41,10 @@ export class MessageHandler {
         break;
       case "player_left":
         this.state.removePlayer(message.playerId);
+        break;
+      case "match_countdown":
+        break;
+      case "player_ready":
         break;
       case "error":
         break;

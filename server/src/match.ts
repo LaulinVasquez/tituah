@@ -27,6 +27,7 @@ import {
   type HitEvent,
   type MatchSnapshot,
   type MatchStatus,
+  type PlayerCount,
   type PlayerInput,
   type PlayerState,
   type Projectile,
@@ -63,6 +64,7 @@ interface ActiveHitbox {
 export class Match {
   readonly id: string;
   readonly map: StageMap;
+  readonly maxPlayers: PlayerCount;
   readonly players = new Map<string, PlayerState>();
   readonly projectiles: Projectile[] = [];
   readonly scores: Record<string, number> = {};
@@ -71,6 +73,8 @@ export class Match {
   tick = 0;
   time = 0;
   winnerId: string | null = null;
+  private countdownSeconds: number | null = null;
+  private countdownAccum = 0;
 
   private readonly inputs = new Map<string, PlayerInput>();
   private readonly previousInputs = new Map<string, PlayerInput>();
@@ -78,6 +82,10 @@ export class Match {
   private readonly pendingAttackReleases = new Set<string>();
   private readonly activeHitboxes: ActiveHitbox[] = [];
   private readonly combat = new Map<string, CombatStats>();
+  private readonly readyPlayerIds = new Set<string>();
+  private readonly eliminatedAt = new Map<string, number>();
+  placements: Record<string, number> = {};
+  private rematchOpen = false;
   private readonly emit: MatchEmitter;
   private readonly lifecycle: MatchLifecycle;
 
@@ -86,11 +94,13 @@ export class Match {
     emit: MatchEmitter,
     map: StageMap = DEFAULT_STAGE,
     lifecycle: MatchLifecycle = {},
+    maxPlayers: PlayerCount = 2,
   ) {
     this.id = id;
     this.emit = emit;
     this.map = map;
     this.lifecycle = lifecycle;
+    this.maxPlayers = maxPlayers;
   }
 
   get playerCount(): number {
@@ -98,14 +108,17 @@ export class Match {
   }
 
   addPlayer(id: string, name: string, avatar: AvatarConfiguration = emptyAvatar()): PlayerState {
-    const spawnIndex = this.players.size % this.map.spawns.length;
+    const used = new Set([...this.players.values()].map((player) => player.spawnIndex));
+    let spawnIndex = 0;
+    while (used.has(spawnIndex) && spawnIndex < this.maxPlayers) spawnIndex += 1;
+    spawnIndex = Math.min(spawnIndex, Math.max(0, this.maxPlayers - 1));
     const spawn = this.map.spawns[spawnIndex] ?? this.map.spawns[0];
     const player: PlayerState = {
       id,
       name,
       position: { x: spawn.x, y: spawn.y },
       velocity: { x: 0, y: 0 },
-      facing: spawnIndex === 0 ? 1 : -1,
+      facing: spawnIndex % 2 === 0 ? 1 : -1,
       grounded: true,
       jumpsRemaining: MAX_JUMPS,
       health: PLAYER_MAX_HEALTH,
@@ -128,7 +141,53 @@ export class Match {
       damageTaken: 0,
       lastAttackerId: null,
     });
+    this.readyPlayerIds.add(id);
     return player;
+  }
+
+  get rematch(): boolean {
+    return this.rematchOpen;
+  }
+
+  readyIds(): string[] {
+    return [...this.readyPlayerIds];
+  }
+
+  canStart(): boolean {
+    if (this.status !== "waiting" || this.players.size < this.maxPlayers) return false;
+    for (const id of this.players.keys()) {
+      if (!this.readyPlayerIds.has(id)) return false;
+    }
+    return true;
+  }
+
+  markReady(id: string): boolean {
+    if (this.status !== "waiting" || !this.players.has(id)) return false;
+    this.readyPlayerIds.add(id);
+    return true;
+  }
+
+  beginRematch(): void {
+    this.status = "waiting";
+    this.rematchOpen = true;
+    this.readyPlayerIds.clear();
+    this.projectiles.length = 0;
+    this.activeHitboxes.length = 0;
+    this.resetPlayersToSpawns();
+  }
+
+  resetToMatchmaking(): void {
+    if (!this.rematchOpen) return;
+    this.rematchOpen = false;
+    this.winnerId = null;
+    this.placements = {};
+    this.readyPlayerIds.clear();
+    for (const id of this.players.keys()) {
+      this.readyPlayerIds.add(id);
+    }
+    if (this.status === "countdown") {
+      this.cancelCountdown();
+    }
   }
 
   removePlayer(id: string): void {
@@ -136,8 +195,17 @@ export class Match {
     this.inputs.delete(id);
     this.previousInputs.delete(id);
     delete this.scores[id];
+    this.combat.delete(id);
+    this.readyPlayerIds.delete(id);
+    if (this.status === "countdown") {
+      this.cancelCountdown();
+      return;
+    }
     if (this.status === "playing") {
-      this.endMatch(this.livingPlayers()[0]?.id ?? null);
+      const living = this.livingPlayers();
+      if (living.length <= 1) {
+        this.endMatch(living[0]?.id ?? null);
+      }
     }
   }
 
@@ -157,11 +225,51 @@ export class Match {
     this.pendingAttackReleases.add(playerId);
   }
 
+  beginCountdown(): void {
+    if (this.status !== "waiting" || this.players.size < this.maxPlayers) return;
+    this.status = "countdown";
+    this.countdownSeconds = 3;
+    this.countdownAccum = 0;
+    this.resetPlayersToSpawns();
+    const snapshot = this.createSnapshot();
+    this.emit(null, {
+      type: "match_countdown",
+      seconds: 3,
+      snapshot: cloneSnapshot(snapshot),
+    });
+  }
+
+  cancelCountdown(): void {
+    this.countdownSeconds = null;
+    this.countdownAccum = 0;
+    if (this.status === "countdown") {
+      this.status = "waiting";
+    }
+  }
+
   start(): void {
-    if (this.status !== "waiting") return;
+    if (this.status !== "waiting" && this.status !== "countdown") return;
+    this.countdownSeconds = null;
+    this.countdownAccum = 0;
     this.status = "playing";
+    this.rematchOpen = false;
+    this.winnerId = null;
     this.tick = 0;
     this.time = 0;
+    this.projectiles.length = 0;
+    this.activeHitboxes.length = 0;
+    this.readyPlayerIds.clear();
+    this.eliminatedAt.clear();
+    this.placements = {};
+    for (const id of this.players.keys()) {
+      this.combat.set(id, {
+        knockouts: 0,
+        deaths: 0,
+        damageDealt: 0,
+        damageTaken: 0,
+        lastAttackerId: null,
+      });
+    }
     this.resetPlayersToSpawns();
     this.lifecycle.onStart?.(this);
     const snapshot = this.createSnapshot();
@@ -175,6 +283,10 @@ export class Match {
   }
 
   update(dt = TICK_DT): void {
+    if (this.status === "countdown") {
+      this.updateCountdown(dt);
+      return;
+    }
     if (this.status !== "playing") return;
 
     this.tick += 1;
@@ -258,6 +370,25 @@ export class Match {
     }
   }
 
+
+  private updateCountdown(dt: number): void {
+    if (this.countdownSeconds == null) return;
+    this.countdownAccum += dt;
+    while (this.countdownAccum >= 1 && this.countdownSeconds != null) {
+      this.countdownAccum -= 1;
+      this.countdownSeconds -= 1;
+      if (this.countdownSeconds <= 0) {
+        this.start();
+        return;
+      }
+      this.emit(null, {
+        type: "match_countdown",
+        seconds: this.countdownSeconds,
+        snapshot: cloneSnapshot(this.createSnapshot()),
+      });
+    }
+  }
+
   createSnapshot(): MatchSnapshot {
     const lastProcessedInput: Record<string, number> = {};
     for (const player of this.players.values()) {
@@ -268,6 +399,7 @@ export class Match {
       tick: this.tick,
       time: this.time,
       status: this.status,
+      maxPlayers: this.maxPlayers,
       players: [...this.players.values()].map(clonePlayerState),
       projectiles: this.projectiles.map((projectile) => ({
         ...projectile,
@@ -363,6 +495,7 @@ export class Match {
     player.health = PLAYER_MAX_HEALTH;
 
     if (player.lives <= 0) {
+      if (!this.eliminatedAt.has(player.id)) this.eliminatedAt.set(player.id, this.time);
       player.position.x = this.map.spawns[player.spawnIndex]?.x ?? 0;
       player.position.y = this.map.blast.bottom + 200;
       return;
@@ -394,7 +527,7 @@ export class Match {
       const spawn = this.map.spawns[player.spawnIndex] ?? this.map.spawns[0];
       player.position = { x: spawn.x, y: spawn.y };
       player.velocity = { x: 0, y: 0 };
-      player.facing = player.spawnIndex === 0 ? 1 : -1;
+      player.facing = player.spawnIndex % 2 === 0 ? 1 : -1;
       player.grounded = true;
       player.jumpsRemaining = MAX_JUMPS;
       player.health = PLAYER_MAX_HEALTH;
@@ -423,11 +556,32 @@ export class Match {
     if (winnerId) {
       this.scores[winnerId] = (this.scores[winnerId] ?? 0) + 1;
     }
+    this.placements = this.computePlacements(winnerId);
     this.emit(null, {
       type: "match_ended",
       winnerId,
       scores: { ...this.scores },
+      players: [...this.players.values()].map(clonePlayerState),
+      maxPlayers: this.maxPlayers,
+      placements: { ...this.placements },
     });
     this.lifecycle.onEnd?.(this);
+  }
+
+  private computePlacements(winnerId: string | null): Record<string, number> {
+    const ranked = [...this.players.values()].sort((a, b) => {
+      const score = (player: PlayerState): number => {
+        if (player.id === winnerId) return Number.POSITIVE_INFINITY;
+        return this.eliminatedAt.get(player.id) ?? Number.POSITIVE_INFINITY;
+      };
+      const delta = score(b) - score(a);
+      if (delta !== 0) return delta;
+      return a.spawnIndex - b.spawnIndex;
+    });
+    const placements: Record<string, number> = {};
+    ranked.forEach((player, index) => {
+      placements[player.id] = index + 1;
+    });
+    return placements;
   }
 }

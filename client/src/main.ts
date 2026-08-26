@@ -1,6 +1,11 @@
 import "./styles.css";
 import { GameClient } from "./game/game-client.js";
 
+if (navigator.maxTouchPoints > 0 || window.matchMedia("(any-pointer: coarse)").matches) {
+  document.addEventListener("contextmenu", (event) => event.preventDefault());
+  document.addEventListener("selectstart", (event) => event.preventDefault());
+}
+
 const canvas = document.querySelector("#game");
 if (!(canvas instanceof HTMLCanvasElement)) {
   throw new Error("Missing game canvas");

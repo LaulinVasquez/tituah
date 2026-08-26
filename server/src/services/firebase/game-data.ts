@@ -60,7 +60,7 @@ export async function removeItemFromUser(uid: string, itemId: string): Promise<v
     const next = { ...profile.avatar };
     for (const [field, slotItemId] of Object.entries(next)) {
       if (slotItemId === itemId) {
-        (next as Record<string, unknown>)[field] = field === "baseAvatarId" ? "base_01" : null;
+        (next as Record<string, unknown>)[field] = field === "baseAvatarId" ? "orange" : null;
       }
     }
     await usersRepository.updateAvatar(uid, next);
