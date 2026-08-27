@@ -99,8 +99,6 @@ export interface PlayerState {
   throwCooldownEndsAt: number;
   /** Client plays throw pose while `time < throwAnimUntil`. */
   throwAnimUntil: number;
-  /** > 0 while holding throw charge; 0 when not charging. */
-  throwChargeStartedAt: number;
   lives: number;
   lastInputSeq: number;
   spawnIndex: number;
@@ -152,8 +150,6 @@ export interface PlayerInput {
   down: boolean;
   jump: boolean;
   attackHeld: boolean;
-  /** Hold-to-charge throw — same rising/falling edge model as `attackHeld`. */
-  throwHeld: boolean;
   aimAngle: number;
   runningSlap?: boolean;
 }
@@ -204,7 +200,6 @@ export function emptyInput(sequence = 0): PlayerInput {
     down: false,
     jump: false,
     attackHeld: false,
-    throwHeld: false,
     aimAngle: 0,
   };
 }
@@ -220,7 +215,6 @@ export function clonePlayerState(player: PlayerState): PlayerState {
     velocity: { ...player.velocity },
     attackState: cloneAttackState(player.attackState),
     throwAnimUntil: player.throwAnimUntil ?? 0,
-    throwChargeStartedAt: player.throwChargeStartedAt ?? 0,
     avatar: { ...emptyAvatar(), ...(player.avatar ?? {}) },
   };
 }

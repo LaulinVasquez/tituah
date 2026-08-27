@@ -7,8 +7,6 @@ export type ClientMessage =
   | ClientInputMessage
   | AttackStartMessage
   | AttackReleaseMessage
-  | ThrowStartMessage
-  | ThrowReleaseMessage
   | ThrowMessage
   | RunningFourSlapMessage;
 
@@ -52,15 +50,6 @@ export interface AttackReleaseMessage {
   type: "attack_release";
 }
 
-export interface ThrowStartMessage {
-  type: "throw_start";
-}
-
-export interface ThrowReleaseMessage {
-  type: "throw_release";
-}
-
-/** @deprecated Prefer throw_start / throw_release; kept as an instant base-power throw. */
 export interface ThrowMessage {
   type: "throw";
 }

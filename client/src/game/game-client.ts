@@ -3,6 +3,7 @@ import {
   DEFAULT_STAGE,
   parsePlayerCount,
   TICK_DT,
+  throwFlipflop,
   triggerRunningFourSlap,
   type FighterColor,
   type PlayerState,
@@ -421,13 +422,7 @@ export class GameClient {
       if (edges.attackEdge === "start") this.socket.send({ type: "attack_start" });
       if (edges.attackEdge === "release") this.socket.send({ type: "attack_release" });
     }
-    if (edges.quickThrowPulse) {
-      this.socket.send({ type: "throw_start" });
-      this.socket.send({ type: "throw_release" });
-    } else {
-      if (edges.throwEdge === "start") this.socket.send({ type: "throw_start" });
-      if (edges.throwEdge === "release") this.socket.send({ type: "throw_release" });
-    }
+    if (edges.throwEdge) this.socket.send({ type: "throw" });
 
     this.localTime += TICK_DT;
     const base =
@@ -439,9 +434,11 @@ export class GameClient {
     }
     const predicted = clonePlayerState(base);
     const projectiles = this.state.snapshot?.projectiles ?? [];
-    // Throw charge follows throwHeld exactly like slap follows attackHeld (via syncThrowFromInput).
+    if (edges.throwEdge) {
+      throwFlipflop(predicted, this.localTime, input.aimAngle, projectiles);
+    }
     if (edges.runningFourSlapEdge) triggerRunningFourSlap(predicted, this.localTime);
-    this.prediction.apply(predicted, input, this.localTime, projectiles);
+    this.prediction.apply(predicted, input, this.localTime);
     this.state.predicted = predicted;
     sfx.observe(predicted);
   }

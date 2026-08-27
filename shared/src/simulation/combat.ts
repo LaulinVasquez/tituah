@@ -20,11 +20,6 @@ import type {
   PlayerState,
 } from "../types.js";
 
-// Avoid circular import with throw.ts — inline the clear.
-function clearThrowCharge(player: PlayerState): void {
-  player.throwChargeStartedAt = 0;
-}
-
 export function getCharge(duration: number, attack: AttackDefinition): number {
   const maxCharge = attack.maxChargeTime ?? 0;
   if (maxCharge <= 0) return 1;
@@ -142,7 +137,6 @@ export function cancelAttackCharge(player: PlayerState): void {
 
 export function triggerRunningFourSlap(player: PlayerState, time: number): boolean {
   if (player.lives <= 0) return false;
-  clearThrowCharge(player);
   cancelAttackCharge(player);
   if (player.attackState.type === "recovery") {
     player.attackState = { type: "idle" };
@@ -173,8 +167,6 @@ export function startAttack(
   attackId = PRIMARY_ATTACK_ID,
 ): void {
   if (!playerCanStartAttack(player)) return;
-  // Can't slap while winding up a throw.
-  if ((player.throwChargeStartedAt ?? 0) > 0) return;
   player.attackState = {
     type: "charging",
     attackId,

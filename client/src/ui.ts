@@ -412,7 +412,6 @@ export class Ui {
         attackState: { type: "idle" },
         throwCooldownEndsAt: 0,
         throwAnimUntil: 0,
-        throwChargeStartedAt: 0,
         lives: 1,
         lastInputSeq: 0,
         spawnIndex,

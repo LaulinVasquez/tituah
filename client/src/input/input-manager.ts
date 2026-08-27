@@ -3,10 +3,9 @@ import { emptyInput, type PlayerInput } from "@tituah/shared";
 export interface SampledInput {
   input: PlayerInput;
   attackEdge: "start" | "release" | null;
-  throwEdge: "start" | "release" | null;
+  throwEdge: boolean;
   runningFourSlapEdge: boolean;
   quickSlapPulse: boolean;
-  quickThrowPulse: boolean;
 }
 
 type VirtualAction = "left" | "right" | "down" | "up" | "jump" | "attack" | "throw";
@@ -21,10 +20,9 @@ const CHARGE_HOLD_MS = 220;
 
 const EMPTY_EDGES: Omit<SampledInput, "input"> = {
   attackEdge: null,
-  throwEdge: null,
+  throwEdge: false,
   runningFourSlapEdge: false,
   quickSlapPulse: false,
-  quickThrowPulse: false,
 };
 
 export class InputManager {
@@ -34,11 +32,7 @@ export class InputManager {
   private readonly pointers = new Map<number, PointerBinding>();
   private aimAngle = 0;
   private previousAttackHeld = false;
-  private throwHeld = false;
   private previousThrowHeld = false;
-  private throwPressStartedAt = 0;
-  private throwChargeStarted = false;
-  private latchedQuickThrow = false;
   private attackPressStartedAt = 0;
   private attackTapTimes: number[] = [];
   private latchedCombo: "running" | null = null;
@@ -143,43 +137,15 @@ export class InputManager {
 
     this.previousAttackHeld = attackHeld;
 
-    this.throwHeld = this.virtual.has("throw") || this.keys.has("j");
-    let throwEdge: SampledInput["throwEdge"] = null;
-    let quickThrowPulse = this.latchedQuickThrow;
-    this.latchedQuickThrow = false;
-
-    if (this.throwHeld && !this.previousThrowHeld) {
-      this.throwPressStartedAt = now;
-    }
-
-    if (
-      this.throwHeld
-      && !this.throwChargeStarted
-      && now - this.throwPressStartedAt >= CHARGE_HOLD_MS
-    ) {
-      throwEdge = "start";
-      this.throwChargeStarted = true;
-    }
-
-    if (!this.throwHeld && this.previousThrowHeld) {
-      if (this.throwChargeStarted) {
-        throwEdge = "release";
-      } else if (now - this.throwPressStartedAt < CHARGE_HOLD_MS) {
-        // Quick tap → base-power throw.
-        quickThrowPulse = true;
-      }
-      this.throwChargeStarted = false;
-      this.throwPressStartedAt = 0;
-    }
-
-    this.previousThrowHeld = this.throwHeld;
+    const throwHeld = this.virtual.has("throw") || this.keys.has("j");
+    const throwEdge = throwHeld && !this.previousThrowHeld;
+    this.previousThrowHeld = throwHeld;
 
     return {
       attackEdge,
       throwEdge,
       runningFourSlapEdge,
       quickSlapPulse,
-      quickThrowPulse,
     };
   }
 
@@ -196,7 +162,6 @@ export class InputManager {
         || this.virtual.has("jump")
         || this.virtual.has("up"),
       attackHeld: this.isAttackHeld(),
-      throwHeld: this.virtual.has("throw") || this.keys.has("j"),
       aimAngle: this.aimAngle,
       runningSlap: false,
     };
@@ -224,7 +189,6 @@ export class InputManager {
         || this.virtual.has("jump")
         || this.virtual.has("up"),
       attackHeld: this.isAttackHeld(),
-      throwHeld: this.virtual.has("throw") || this.keys.has("j"),
       aimAngle: this.aimAngle,
     };
   }
@@ -339,11 +303,7 @@ export class InputManager {
     this.pointers.clear();
     this.pointerDown = false;
     this.previousAttackHeld = false;
-    this.throwHeld = false;
     this.previousThrowHeld = false;
-    this.throwPressStartedAt = 0;
-    this.throwChargeStarted = false;
-    this.latchedQuickThrow = false;
     this.attackPressStartedAt = 0;
     this.attackTapTimes = [];
     this.latchedCombo = null;

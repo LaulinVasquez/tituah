@@ -10,10 +10,6 @@ import {
   playerCanStartAttack,
   releaseAttack,
   startAttack,
-  startThrowCharge,
-  getThrowCharge,
-  cancelThrowCharge,
-  isThrowCharging,
   triggerRunningFourSlap,
   updateAttackState,
   throwableIdFromAvatar,
@@ -596,7 +592,7 @@ export class LobbyFighterPreview {
       audio.play("hit");
       this.localFighter.showHit(this.time, 1, 1);
     }
-    if (move === "throw") void this.playThrow(token, 0.45);
+    if (move === "throw") void this.playThrow(token);
   }
 
   private shouldIgnoreDemoKeyboard(): boolean {
@@ -616,8 +612,6 @@ export class LobbyFighterPreview {
     this.demoToken += 1;
     if (this.projectileSprite) this.projectileSprite.visible = false;
     this.localPlayer.throwAnimUntil = 0;
-    this.localPlayer.throwChargeStartedAt = 0;
-    this.localPlayer.throwCooldownEndsAt = 0;
     audio.stop("run");
   }
 
@@ -625,19 +619,12 @@ export class LobbyFighterPreview {
     if (!this.demoInput || this.shouldIgnoreDemoKeyboard()) return;
 
     const sample = this.demoInput.sample();
-    const { input, attackEdge, throwEdge, runningFourSlapEdge, quickSlapPulse, quickThrowPulse } =
+    const { input, attackEdge, throwEdge, runningFourSlapEdge, quickSlapPulse } =
       sample;
     const jumpEdge = input.jump && !this.demoJumpHeld;
     this.demoJumpHeld = input.jump;
 
     updateAttackState(this.localPlayer, this.time);
-    // Lobby demo: auto-release at full charge without locking throwCooldownEndsAt forever.
-    if (isThrowCharging(this.localPlayer) && getThrowCharge(this.localPlayer, this.time) >= 1) {
-      cancelThrowCharge(this.localPlayer);
-      audio.stop("slapCharge");
-      void this.playThrow(this.demoToken, 1);
-      this.notifyDemoMove("throw");
-    }
 
     const locomoting =
       this.localPlayer.attackState.type === "idle"
@@ -685,27 +672,11 @@ export class LobbyFighterPreview {
       return;
     }
 
-    if (throwEdge === "start") {
+    if (throwEdge) {
       this.interruptCannedDemo();
-      this.localPlayer.throwCooldownEndsAt = 0;
-      if (!startThrowCharge(this.localPlayer, this.time)) return;
-      audio.play("slapCharge");
+      void this.playThrow(this.demoToken);
       this.notifyDemoMove("throw");
       return;
-    }
-
-    if (throwEdge === "release" || quickThrowPulse) {
-      const charge = quickThrowPulse ? 0 : getThrowCharge(this.localPlayer, this.time);
-      cancelThrowCharge(this.localPlayer);
-      audio.stop("slapCharge");
-      this.interruptCannedDemo();
-      void this.playThrow(this.demoToken, charge);
-      this.notifyDemoMove("throw");
-      return;
-    }
-
-    if (isThrowCharging(this.localPlayer)) {
-      this.notifyDemoMove("throw");
     }
 
     if (quickSlapPulse && playerCanStartAttack(this.localPlayer)) {
@@ -762,7 +733,7 @@ export class LobbyFighterPreview {
     this.resetBody(this.localPlayer);
     audio.stop("run");
     this.localPlayer.facing = 1;
-    await this.playThrow(token, 0.55);
+    await this.playThrow(token);
   }
 
   async slap(target: HTMLElement, onHit?: () => void): Promise<number> {
@@ -928,8 +899,6 @@ export class LobbyFighterPreview {
     player.jumpsRemaining = MAX_JUMPS;
     player.attackState = { type: "idle" };
     player.throwAnimUntil = 0;
-    player.throwChargeStartedAt = 0;
-    player.throwCooldownEndsAt = 0;
     if (this.demoGroundY > 0) {
       player.position.y = this.demoGroundY;
     }
@@ -1055,29 +1024,26 @@ export class LobbyFighterPreview {
     this.localPlayer.attackState = { type: "idle" };
   }
 
-  private async playThrow(token: number, charge = 0): Promise<void> {
+  private async playThrow(token: number): Promise<void> {
     const sprite = this.projectileSprite;
     const allTextures = this.projectileTextures;
     if (!sprite || !allTextures) return;
 
     const throwableId = throwableIdFromAvatar(this.localPlayer.avatar?.throwableId);
     const frames = projectileTexturesFor(allTextures, throwableId);
-    const power = Math.min(1, Math.max(0, charge));
-    const flightBoost = 1 + power * 0.75;
 
     this.localPlayer.facing = 1;
-    this.localPlayer.throwChargeStartedAt = 0;
     this.localPlayer.throwAnimUntil = this.time + THROW_ANIM_DURATION;
     audio.play("slapSwing");
 
     const scale = projectilePreviewScale(this.scale);
     const releaseDelay = 1 / 10; // align flight with throw release frame
-    const demoMs = THROW_DEMO_MS / flightBoost;
+    const demoMs = THROW_DEMO_MS;
     const started = performance.now();
     const flightStart = started + releaseDelay * 1000;
     const startX = this.localPlayer.position.x + 38 * this.localPlayer.facing;
     const startY = this.localPlayer.position.y - FIGHTER_VISUAL_HEIGHT * this.scale * 0.55;
-    const endX = startX + 220 * flightBoost * this.localPlayer.facing;
+    const endX = startX + 220 * this.localPlayer.facing;
     const endY = startY - 28;
 
     sprite.visible = false;
@@ -1108,7 +1074,6 @@ export class LobbyFighterPreview {
       sprite.visible = false;
       if (token === this.demoToken) {
         this.localPlayer.throwAnimUntil = 0;
-        this.localPlayer.throwChargeStartedAt = 0;
         this.resetBody(this.localPlayer);
       } else if (this.localPlayer.throwAnimUntil <= this.time) {
         this.localPlayer.throwAnimUntil = 0;
@@ -1147,7 +1112,6 @@ function idlePlayer(id: string, spawnIndex: number): PlayerState {
     attackState: { type: "idle" },
     throwCooldownEndsAt: 0,
     throwAnimUntil: 0,
-    throwChargeStartedAt: 0,
     lives: 1,
     lastInputSeq: 0,
     spawnIndex,

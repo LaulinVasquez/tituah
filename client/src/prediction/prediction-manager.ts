@@ -4,12 +4,10 @@ import {
   emptyInput,
   INPUT_HISTORY_LIMIT,
   syncAttackFromInput,
-  syncThrowFromInput,
   TICK_DT,
   type MatchSnapshot,
   type PlayerInput,
   type PlayerState,
-  type Projectile,
   type StageMap,
 } from "@tituah/shared";
 
@@ -40,16 +38,10 @@ export class PredictionManager {
     this.player = local ? clonePlayerState(local) : null;
   }
 
-  apply(
-    player: PlayerState,
-    input: PlayerInput,
-    time: number,
-    projectiles: readonly Projectile[] = [],
-  ): PlayerState {
+  apply(player: PlayerState, input: PlayerInput, time: number): PlayerState {
     const previous = this.previousInput;
     applyMovement(player, input, previous, this.map.platforms, TICK_DT);
     syncAttackFromInput(player, input, previous, time);
-    syncThrowFromInput(player, input, previous, time, [...projectiles]);
     this.pending.push({ input, previous });
     if (this.pending.length > INPUT_HISTORY_LIMIT) {
       this.pending.shift();
@@ -70,10 +62,7 @@ export class PredictionManager {
     const lastAck = snapshot.lastProcessedInput[localId] ?? 0;
     this.pending = this.pending.filter((entry) => entry.input.sequence > lastAck);
 
-    // Edge intents aren't fully replayed from input history — keep local predicted
-    // attack/throw charge so snapshots don't flicker pose/SFX off.
     const localAttack = this.player?.attackState;
-    const localThrowChargeStartedAt = this.player?.throwChargeStartedAt ?? 0;
     const localThrowAnimUntil = this.player?.throwAnimUntil ?? 0;
 
     const reconciled = clonePlayerState(serverPlayer);
@@ -85,7 +74,6 @@ export class PredictionManager {
     if (localAttack) {
       reconciled.attackState = localAttack;
     }
-    reconciled.throwChargeStartedAt = localThrowChargeStartedAt;
     if (localThrowAnimUntil > (reconciled.throwAnimUntil ?? 0)) {
       reconciled.throwAnimUntil = localThrowAnimUntil;
     }

@@ -30,16 +30,6 @@ export const THROW_HAND_ANCHORS: Record<ThrowableOverlayFrame, ThrowHandAnchor> 
   1: { offsetX: 278, offsetY: -271 },
 };
 
-/**
- * Hand (rear glove) on slap-charge frames — lower on the body, arcing through
- * the wind-up so the item can lerp between these points.
- */
-export const SLAP_CHARGE_HAND_ANCHORS: readonly ThrowHandAnchor[] = [
-  { offsetX: -32, offsetY: -56 },
-  { offsetX: -44, offsetY: -48 },
-  { offsetX: -54, offsetY: -58 },
-];
-
 /** Scale throwable art relative to the fighter frame pixel scale. */
 export const THROWABLE_OVERLAY_SCALE = 0.55;
 
