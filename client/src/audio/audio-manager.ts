@@ -52,6 +52,23 @@ function createAudioContext(): AudioContext {
   return new AC();
 }
 
+/**
+ * iPhone silent switch mutes Web Audio while the session is "ambient".
+ * "playback" uses media volume (like Spotify/games), independent of the ringer.
+ */
+function promotePlaybackSession(): void {
+  try {
+    const session = (navigator as Navigator & {
+      audioSession?: { type: string };
+    }).audioSession;
+    if (session && session.type !== "playback") {
+      session.type = "playback";
+    }
+  } catch {
+    // Older Safari / non-WebKit — no-op.
+  }
+}
+
 export class AudioManager {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -138,6 +155,7 @@ export class AudioManager {
    */
   async unlock(): Promise<void> {
     // Do sync gesture work before any await — Safari only unlocks in this stack.
+    promotePlaybackSession();
     const context = this.ensureContext();
     this.primeContext(context);
     if (context.state !== "running") {
@@ -157,6 +175,8 @@ export class AudioManager {
     if (options?.loop && this.isPlaying(id)) return;
     // Charge cue must never stack — overlapping plays caused the old throw glitch.
     if (id === "slapCharge" && this.isPlaying(id)) return;
+
+    promotePlaybackSession();
 
     const context = this.context;
     // Safari: voices started while suspended never become audible.
@@ -235,6 +255,7 @@ export class AudioManager {
   }
 
   private async unlockInner(): Promise<void> {
+    promotePlaybackSession();
     const context = this.ensureContext();
     if (context.state !== "running") {
       await context.resume().catch(() => undefined);
@@ -242,6 +263,7 @@ export class AudioManager {
 
     // Safari: don't wait for every SFX — get music decoded and playing first.
     await this.ensureDecoded("music");
+    promotePlaybackSession();
     if (context.state !== "running") {
       await context.resume().catch(() => undefined);
     }
@@ -253,6 +275,7 @@ export class AudioManager {
     void this.load().then(async () => {
       await this.decodePending();
       if (this.unlocked && this.context?.state === "running" && !this.isPlaying("music")) {
+        promotePlaybackSession();
         this.startMusic();
       }
     });
@@ -383,6 +406,7 @@ export class AudioManager {
           this.voices.delete("music");
         }
       } else if (this.mixer.musicEnabled && !this.isPlaying("music")) {
+        promotePlaybackSession();
         this.startMusic();
       }
     });
