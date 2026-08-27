@@ -51,8 +51,11 @@ export const FLIPFLOP_THROW: AttackDefinition = {
   type: "throwable",
   maxChargeTime: 1.05,
   baseDamage: 14,
+  maxDamage: 38,
   baseKnockback: 420,
+  maxKnockback: 1100,
   verticalKnockback: 220,
+  maxVerticalKnockback: 560,
   /** Unused for throw gate — reload is “projectile left the playfield”. */
   cooldown: 0,
   activeDuration: 0.01,

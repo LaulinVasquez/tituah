@@ -4,15 +4,20 @@ import {
   FIGHTER_VARIANT_CUPS,
   THROWABLE_IDS,
   THROWABLE_LABELS,
+  accessoryUnlockLevel,
+  colorUnlockLevel,
   emptyAvatar,
   fighterColorFromId,
+  isAccessoryUnlocked,
+  isColorUnlocked,
   isFighterColor,
   isStageId,
   isStagePreference,
   isThrowableId,
+  isThrowableUnlocked,
   parsePlayerCount,
-  parsePlayerCountPreference,
   throwableIdFromAvatar,
+  throwableUnlockLevel,
   type FighterColor,
   type PlayerCount,
   type PlayerCountPreference,
@@ -38,7 +43,7 @@ import { STAGE_VISUALS } from "./rendering/stages/stage-config.js";
 import { audio } from "./audio/audio-manager.js";
 import { shatterElement } from "./shatter-pane.js";
 import { prefersNativeTapHandling } from "./config/runtime.js";
-import { createElement, Gamepad2, X } from "lucide";
+import { createElement, Gamepad2, Lock, X } from "lucide";
 
 type LobbyPane = "landing" | "login" | "menu" | "waiting" | "result" | "edit";
 
@@ -55,7 +60,12 @@ const DEMO_MOVES = new Set<LobbyDemoMove>([
 const JOYSTICK_STORAGE_KEY = "tituah:joystick";
 
 function readJoystickVisible(): boolean {
-  return localStorage.getItem(JOYSTICK_STORAGE_KEY) !== "0";
+  const stored = localStorage.getItem(JOYSTICK_STORAGE_KEY);
+  if (stored === null) {
+    // Touch: start with the instruction box; desktop keeps pads off by default here.
+    return false;
+  }
+  return stored !== "0";
 }
 
 function writeJoystickVisible(visible: boolean): void {
@@ -82,6 +92,8 @@ export class Ui {
   readonly joystickToggle = required("#joystick-toggle", HTMLButtonElement);
   readonly editButton = required("#edit-avatar", HTMLButtonElement);
   readonly saveAvatarButton = required("#save-avatar", HTMLButtonElement);
+  readonly profileActionSlot = required(".profile-action-slot");
+  readonly backEditButton = required("#back-edit", HTMLButtonElement);
   readonly displayNameInput = required("#display-name", HTMLInputElement);
   readonly loginNameInput = required("#login-name", HTMLInputElement);
   readonly emailInput = required("#email", HTMLInputElement);
@@ -104,8 +116,13 @@ export class Ui {
   readonly hudExitButton = required("#hud-exit", HTMLButtonElement);
   readonly mixer = required("#audio-mixer");
   readonly exitConfirm = required("#exit-confirm");
+  readonly signOutConfirm = required("#sign-out-confirm");
   readonly stageButtons = document.querySelectorAll<HTMLButtonElement>("[data-stage]");
-  readonly playerCountButtons = document.querySelectorAll<HTMLButtonElement>("[data-players]");
+  readonly playerCountModeButtons = document.querySelectorAll<HTMLButtonElement>("[data-players-mode]");
+  readonly playerCountCarousel = required("#player-count-carousel");
+  readonly playerCountValue = required("#player-count-value");
+  readonly playerCountPrev = required("#player-count-prev", HTMLButtonElement);
+  readonly playerCountNext = required("#player-count-next", HTMLButtonElement);
   readonly startMatchButton = required("#start-match", HTMLButtonElement);
 
   private pane: LobbyPane = "landing";
@@ -126,6 +143,7 @@ export class Ui {
   private fighter?: LobbyFighterPreview;
   private selectedStage: StagePreference = "any";
   private selectedPlayerCount: PlayerCountPreference = "any";
+  private setPlayerCount: PlayerCount = 2;
   private matchSize: PlayerCount = 4;
   private openMatch = false;
   private waitingRoster: PlayerState[] = [];
@@ -137,6 +155,9 @@ export class Ui {
   private mixerOpen = false;
   private mixerAnchor: HTMLButtonElement | null = null;
   private exitConfirmOpen = false;
+  private signOutConfirmOpen = false;
+  /** Ignore Edit/Save until this time — they share a slot and ghost-clicks swap instantly. */
+  private profileActionGuardUntil = 0;
   private readonly directTapHandling = prefersNativeTapHandling();
   private readonly hudSlots = [...this.hud.querySelectorAll<HTMLElement>(".fighter")].map((slot) => ({
     index: Number(slot.dataset.slot),
@@ -176,11 +197,18 @@ export class Ui {
         this.selectStage(id);
       });
     }
-    for (const button of this.playerCountButtons) {
+    for (const button of this.playerCountModeButtons) {
       button.addEventListener("click", () => {
-        this.selectPlayerCount(parsePlayerCountPreference(button.dataset.players));
+        const mode = button.dataset.playersMode;
+        if (mode === "any") {
+          this.selectPlayerCount("any");
+          return;
+        }
+        if (mode === "set") this.selectPlayerCount(this.setPlayerCount);
       });
     }
+    this.playerCountPrev.addEventListener("click", () => this.nudgeSetPlayerCount(-1));
+    this.playerCountNext.addEventListener("click", () => this.nudgeSetPlayerCount(1));
     this.displayNameInput.addEventListener("input", () => {
       if (this.pane === "edit") this.setPreviewName(this.displayNameInput.value.trim() || "Fighter");
     });
@@ -192,21 +220,21 @@ export class Ui {
     });
     this.colorGrid.addEventListener("click", (event) => {
       const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-color]");
-      if (!button || button.disabled || this.slapping) return;
+      if (!button || button.disabled || button.dataset.locked === "true" || this.slapping) return;
       const color = button.dataset.color;
       if (!isFighterColor(color)) return;
       void this.selectColor(color, true);
     });
     this.throwableGrid.addEventListener("click", (event) => {
       const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-throwable]");
-      if (!button || button.disabled || this.slapping) return;
+      if (!button || button.disabled || button.dataset.locked === "true" || this.slapping) return;
       const throwableId = button.dataset.throwable;
       if (!isThrowableId(throwableId)) return;
       void this.selectThrowable(throwableId, true);
     });
     this.faceAccessoryGrid.addEventListener("click", (event) => {
       const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-face]");
-      if (!button || button.disabled || this.slapping) return;
+      if (!button || button.disabled || button.dataset.locked === "true" || this.slapping) return;
       const faceId = button.dataset.face;
       if (!faceId || !isBakedAccessoryId(faceId)) return;
       const next = this.selectedAccessoryId === faceId ? null : faceId;
@@ -214,6 +242,7 @@ export class Ui {
     });
     this.selectStage(this.selectedStage);
     this.selectPlayerCount(this.selectedPlayerCount);
+    this.mountStageThumbs();
     this.bindMixer();
     this.bindJoystickToggle();
     this.bindAccountStatus();
@@ -232,7 +261,7 @@ export class Ui {
         (event) => {
           const button = (event.target as HTMLElement | null)?.closest("button");
           if (!button || button.disabled || this.loading) return;
-          if (button.id === "audio-mute" || button.closest("#audio-mixer")) return;
+          if (button.id === "audio-mute" || button.id === "sign-out" || button.id === "back-edit" || button.closest("#audio-mixer, #sign-out-confirm, #exit-confirm")) return;
           if (button.dataset.slapReplay === "true") return;
           // Auth buttons use their own listeners (slap + sign-in in authenticate).
           if (
@@ -249,6 +278,7 @@ export class Ui {
           if (button.id === "joystick-toggle") return;
           if (button.id === "account-status") return;
           if (button.id === "cancel-wait") return;
+          if (button.id === "edit-avatar" || button.id === "save-avatar") return;
           if (button.id === "start-match") return;
           const demo = button.dataset.demoMove;
           if (demo && isDemoMove(demo)) {
@@ -271,16 +301,18 @@ export class Ui {
             button.click();
             delete button.dataset.slapReplay;
           };
-          if (button.dataset.stage || button.dataset.players) {
+          if (button.id === "again" || button.id === "result-back") {
+            void this.slapThen(button, replay, false);
+            return;
+          }
+          if (button.dataset.stage || button.dataset.playersMode) {
             void this.jumpThen(replay);
             return;
           }
-          if (button.id === "edit-avatar" || button.id === "again" || button.id === "result-back") {
-            void this.slapThen(button, replay, false);
-            return;
-          }
-          if (button.id === "save-avatar" || button.id === "back-edit") {
-            void this.slapThen(button, replay, false);
+          if (
+            button.id === "player-count-prev"
+            || button.id === "player-count-next"
+          ) {
             return;
           }
           const shatter = button.dataset.deferShatter !== "true";
@@ -330,6 +362,27 @@ export class Ui {
     this.characterStageBackdrop.style.setProperty("--stage-backdrop", `url("${url}")`);
   }
 
+  private mountStageThumbs(): void {
+    const thumbs = {
+      barnyard: STAGE_VISUALS.barnyard.background,
+      fridge: STAGE_VISUALS.fridge.background,
+      meadow: STAGE_VISUALS.meadow.background,
+    } as const;
+    for (const button of this.stageButtons) {
+      const stage = button.dataset.stage;
+      if (stage === "any") {
+        button.style.setProperty("--stage-thumb-a", `url("${thumbs.barnyard}")`);
+        button.style.setProperty("--stage-thumb-b", `url("${thumbs.fridge}")`);
+        button.style.setProperty("--stage-thumb-c", `url("${thumbs.meadow}")`);
+        button.style.setProperty("--stage-thumb", `url("${thumbs.barnyard}")`);
+        continue;
+      }
+      if (stage === "barnyard" || stage === "fridge" || stage === "meadow") {
+        button.style.setProperty("--stage-thumb", `url("${thumbs[stage]}")`);
+      }
+    }
+  }
+
   private selectStage(stageId: StagePreference): void {
     this.selectedStage = stageId;
     for (const entry of this.stageButtons) {
@@ -342,12 +395,23 @@ export class Ui {
 
   private selectPlayerCount(preference: PlayerCountPreference): void {
     this.selectedPlayerCount = preference;
-    for (const entry of this.playerCountButtons) {
-      const value = entry.dataset.players;
-      entry.dataset.selected = String(
-        value === "any" ? preference === "any" : parsePlayerCount(value) === preference,
-      );
+    if (preference !== "any") this.setPlayerCount = preference;
+    const setMode = preference !== "any";
+    for (const entry of this.playerCountModeButtons) {
+      const mode = entry.dataset.playersMode;
+      entry.dataset.selected = String(mode === "any" ? !setMode : setMode);
     }
+    this.playerCountCarousel.hidden = false;
+    this.playerCountCarousel.classList.toggle("is-blocked", !setMode);
+    this.playerCountValue.textContent = String(this.setPlayerCount);
+    this.playerCountPrev.disabled = !setMode || this.setPlayerCount <= 2;
+    this.playerCountNext.disabled = !setMode || this.setPlayerCount >= 4;
+  }
+
+  private nudgeSetPlayerCount(delta: -1 | 1): void {
+    const next = this.setPlayerCount + delta;
+    if (next < 2 || next > 4) return;
+    this.selectPlayerCount(parsePlayerCount(next));
   }
 
   private preferredCapacity(): PlayerCount {
@@ -426,6 +490,7 @@ export class Ui {
     this.renderColorPicker(profile);
     this.renderThrowablePicker(profile);
     this.renderFaceAccessoryPicker(profile);
+    this.fighter?.setAvatar(this.avatarWithLoadout({}));
     this.setError(this.editError, error);
     this.setActiveMove("idle");
   }
@@ -760,7 +825,14 @@ export class Ui {
   }
 
   onBackFromEdit(handler: () => void): void {
-    bindPress(required("#back-edit", HTMLButtonElement), handler, this.directTapHandling);
+    bindPress(
+      this.backEditButton,
+      () => {
+        if (performance.now() < this.profileActionGuardUntil) return;
+        handler();
+      },
+      this.directTapHandling,
+    );
   }
 
   onJoin(handler: () => void): void {
@@ -794,15 +866,44 @@ export class Ui {
   }
 
   onSignOut(handler: () => void): void {
-    bindPress(this.signOutButton, handler, this.directTapHandling);
+    bindPress(
+      this.signOutButton,
+      () => {
+        if (performance.now() < this.profileActionGuardUntil) return;
+        this.toggleSignOutConfirm();
+      },
+      this.directTapHandling,
+    );
+    bindPress(
+      required("#sign-out-confirm-yes", HTMLButtonElement),
+      () => {
+        this.closeSignOutConfirm();
+        handler();
+      },
+      this.directTapHandling,
+    );
   }
 
   onEditAvatar(handler: () => void): void {
-    bindPress(this.editButton, handler, this.directTapHandling);
+    bindPress(
+      this.editButton,
+      () => {
+        if (performance.now() < this.profileActionGuardUntil) return;
+        handler();
+      },
+      this.directTapHandling,
+    );
   }
 
   onSaveAvatar(handler: () => void): void {
-    bindPress(this.saveAvatarButton, handler, this.directTapHandling);
+    bindPress(
+      this.saveAvatarButton,
+      () => {
+        if (performance.now() < this.profileActionGuardUntil) return;
+        handler();
+      },
+      this.directTapHandling,
+    );
   }
 
   onSelectColor(handler: (color: FighterColor) => void): void {
@@ -835,6 +936,8 @@ export class Ui {
     this.lobbyOptions.classList.toggle("is-loading", loading);
     this.lobby.classList.toggle("is-loading", loading);
     this.editButton.disabled = loading;
+    this.saveAvatarButton.disabled = loading;
+    this.backEditButton.disabled = loading;
     this.fighter?.setLoading(loading);
   }
 
@@ -995,27 +1098,39 @@ export class Ui {
 
     this.editorHint.hidden = true;
     this.editorHint.textContent = "";
+    const level = profile.progression.level;
     this.selectedColor = fighterColorFromId(profile.avatar.baseAvatarId);
+    if (!isColorUnlocked(level, this.selectedColor)) {
+      this.selectedColor = "orange";
+    }
 
     FIGHTER_COLORS.forEach((color, index) => {
       const cup = FIGHTER_VARIANT_CUPS[index];
       const col = index % 6;
       const row = Math.floor(index / 6);
+      const unlocked = isColorUnlocked(level, color);
+      const unlockAt = colorUnlockLevel(color);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "color-swatch";
       button.dataset.color = color;
       button.dataset.variant = String(index);
+      button.dataset.locked = String(!unlocked);
+      if (!unlocked) button.dataset.unlockTip = `Unlocks at level ${unlockAt}`;
+      else delete button.dataset.unlockTip;
+      button.disabled = false;
+      button.setAttribute("aria-disabled", String(!unlocked));
       button.style.setProperty("--cup-x", `${cup.x}%`);
       button.style.setProperty("--cup-y", `${cup.y}%`);
       button.style.setProperty("--variant-x", `${(col / 5) * 100}%`);
       button.style.setProperty("--variant-y", `${row * 100}%`);
-      button.setAttribute("aria-label", color);
-      button.title = color[0].toUpperCase() + color.slice(1);
+      button.setAttribute("aria-label", unlocked ? color : `${color} — unlocks at level ${unlockAt}`);
+      button.title = unlocked ? color[0].toUpperCase() + color.slice(1) : "";
       const icon = document.createElement("span");
       icon.className = "color-swatch-icon";
       icon.setAttribute("aria-hidden", "true");
       button.append(icon);
+      if (!unlocked) button.append(this.createLockBadge());
       this.colorGrid.append(button);
     });
     this.syncColorButtons();
@@ -1025,18 +1140,33 @@ export class Ui {
     this.throwableGrid.replaceChildren();
     if (!profile) return;
 
+    const level = profile.progression.level;
     this.selectedThrowable = throwableIdFromAvatar(profile.avatar.throwableId);
+    if (!isThrowableUnlocked(level, this.selectedThrowable)) {
+      this.selectedThrowable = "sandal";
+    }
     for (const id of THROWABLE_IDS) {
+      const unlocked = isThrowableUnlocked(level, id);
+      const unlockAt = throwableUnlockLevel(id);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "throwable-swatch";
       button.dataset.throwable = id;
-      button.setAttribute("aria-label", THROWABLE_LABELS[id]);
-      button.title = THROWABLE_LABELS[id];
+      button.dataset.locked = String(!unlocked);
+      if (!unlocked) button.dataset.unlockTip = `Unlocks at level ${unlockAt}`;
+      else delete button.dataset.unlockTip;
+      button.disabled = false;
+      button.setAttribute("aria-disabled", String(!unlocked));
+      button.setAttribute(
+        "aria-label",
+        unlocked ? THROWABLE_LABELS[id] : `${THROWABLE_LABELS[id]} — unlocks at level ${unlockAt}`,
+      );
+      button.title = unlocked ? THROWABLE_LABELS[id] : "";
       const icon = document.createElement("span");
       icon.className = "throwable-swatch-icon";
       icon.setAttribute("aria-hidden", "true");
       button.append(icon);
+      if (!unlocked) button.append(this.createLockBadge());
       this.throwableGrid.append(button);
     }
     this.syncThrowableButtons();
@@ -1046,21 +1176,51 @@ export class Ui {
     this.faceAccessoryGrid.replaceChildren();
     if (!profile) return;
 
+    const level = profile.progression.level;
     this.selectedAccessoryId = bakedAccessoryIdFromAvatar(profile.avatar);
+    if (this.selectedAccessoryId && !isAccessoryUnlocked(level, this.selectedAccessoryId)) {
+      this.selectedAccessoryId = null;
+    }
     for (const accessory of BAKED_ACCESSORIES) {
+      const unlocked = isAccessoryUnlocked(level, accessory.id);
+      const unlockAt = accessoryUnlockLevel(accessory.id);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "face-swatch";
       button.dataset.face = accessory.id;
-      button.setAttribute("aria-label", accessory.label);
-      button.title = accessory.label;
+      button.dataset.locked = String(!unlocked);
+      if (!unlocked) button.dataset.unlockTip = `Unlocks at level ${unlockAt}`;
+      else delete button.dataset.unlockTip;
+      button.disabled = false;
+      button.setAttribute("aria-disabled", String(!unlocked));
+      button.setAttribute(
+        "aria-label",
+        unlocked ? accessory.label : `${accessory.label} — unlocks at level ${unlockAt}`,
+      );
+      button.title = unlocked ? accessory.label : "";
       const icon = document.createElement("span");
       icon.className = "face-swatch-icon";
       icon.setAttribute("aria-hidden", "true");
       button.append(icon);
+      if (!unlocked) button.append(this.createLockBadge());
       this.faceAccessoryGrid.append(button);
     }
     this.syncFaceAccessoryButtons();
+  }
+
+  private createLockBadge(): HTMLElement {
+    const badge = document.createElement("span");
+    badge.className = "cosmetic-lock";
+    badge.setAttribute("aria-hidden", "true");
+    badge.append(
+      createElement(Lock, {
+        width: 14,
+        height: 14,
+        "stroke-width": 2.4,
+        class: "cosmetic-lock-icon",
+      }),
+    );
+    return badge;
   }
 
   private syncColorButtons(): void {
@@ -1111,6 +1271,8 @@ export class Ui {
   }
 
   private async selectColor(color: FighterColor, animate = false): Promise<void> {
+    const level = this.profile?.progression.level ?? 1;
+    if (!isColorUnlocked(level, color)) return;
     if (color === this.selectedColor) return;
     this.selectedColor = color;
     this.syncColorButtons();
@@ -1131,6 +1293,8 @@ export class Ui {
   }
 
   private async selectThrowable(throwableId: ThrowableId, animate = false): Promise<void> {
+    const level = this.profile?.progression.level ?? 1;
+    if (!isThrowableUnlocked(level, throwableId)) return;
     if (throwableId === this.selectedThrowable) return;
     this.selectedThrowable = throwableId;
     this.syncThrowableButtons();
@@ -1150,6 +1314,8 @@ export class Ui {
   }
 
   private async selectAccessory(accessoryId: string | null, animate = false): Promise<void> {
+    const level = this.profile?.progression.level ?? 1;
+    if (accessoryId && !isAccessoryUnlocked(level, accessoryId)) return;
     if (accessoryId === this.selectedAccessoryId) return;
     this.selectedAccessoryId = accessoryId;
     this.syncFaceAccessoryButtons();
@@ -1223,6 +1389,8 @@ export class Ui {
   }
 
   private setPane(pane: LobbyPane): void {
+    const wasEditing = this.pane === "edit";
+    const willEdit = pane === "edit";
     this.pane = pane;
     for (const name of ["landing", "login", "menu", "waiting", "result", "edit"] as const) {
       required(`#pane-${name}`).hidden = name !== pane;
@@ -1235,12 +1403,29 @@ export class Ui {
     this.editError.hidden = true;
     if (pane !== "result") this.hideResultBanner();
     this.setAccountTipOpen(false);
+    this.closeSignOutConfirm();
     this.fighter?.setDemoKeyboardEnabled(
-      pane === "edit",
+      pane === "edit" || pane === "menu",
       (move) => this.setActiveMove(move),
     );
+    required("#control-legend-wrap").hidden = pane !== "menu" && pane !== "edit";
+    // Edit↔Save and Back↔Sign out share slots; block the replacement control until
+    // the originating tap's ghost click has finished (common on touch / small screens).
+    if (wasEditing !== willEdit) {
+      this.profileActionGuardUntil = performance.now() + 500;
+      this.armSwapControl(willEdit ? this.saveAvatarButton : this.editButton);
+      this.armSwapControl(willEdit ? this.backEditButton : this.signOutButton);
+    }
     this.updatePlayerCard();
     requestAnimationFrame(() => this.fighter?.layout());
+  }
+
+  /** Keep a newly shown swap control from receiving the same tap that revealed it. */
+  private armSwapControl(button: HTMLButtonElement): void {
+    button.style.pointerEvents = "none";
+    window.setTimeout(() => {
+      if (!button.hidden) button.style.pointerEvents = "";
+    }, 500);
   }
 
   private setPaneError(error?: string): void {
@@ -1255,26 +1440,31 @@ export class Ui {
     const waiting = this.pane === "waiting";
     const result = this.pane === "result";
     const onAuth = this.pane === "landing" || this.pane === "login";
-    // Waiting keeps the profile strip so leave + account status stay available.
-    const showProfile = !locked && !editing && !result && !onAuth;
+    // Waiting keeps the profile strip for leave + account status (no edit control).
+    const showProfile = !locked && !result && !onAuth;
     const showLocked = locked && !onAuth && !waiting && !result && !editing;
     required("#player-card-locked").hidden = !showLocked;
-    // Edit keeps only "Try a move" + controls toggle — never name/stats/save status.
     required("#player-card-profile").hidden = !showProfile;
     required("#player-card-waiting").hidden = true;
     required("#player-card-result").hidden = !result;
-    required("#player-card-moves").hidden = !editing;
+    required("#player-card-moves").hidden = true;
     this.cancelWaitButton.hidden = !waiting || !showProfile;
+    this.editButton.hidden = this.pane !== "menu" || !showProfile;
+    this.saveAvatarButton.hidden = !editing || !showProfile;
+    // Collapse the whole Edit/Save slot while waiting (not just hide the buttons).
+    this.profileActionSlot.hidden = this.editButton.hidden && this.saveAvatarButton.hidden;
+    const showJoystickToggle =
+      document.documentElement.classList.contains("has-touch")
+      && (editing || this.pane === "menu")
+      && showProfile;
+    this.joystickToggle.hidden = !showJoystickToggle;
+    this.backEditButton.hidden = !editing;
+    this.signOutButton.hidden = locked || onAuth || editing;
     this.syncStartMatchButton();
     this.playerCard.classList.toggle("is-locked", showLocked);
     this.playerCard.classList.toggle("is-bare", onAuth);
-    this.playerCard.classList.toggle("is-moves", editing);
     this.playerCard.classList.toggle("is-waiting", waiting);
     this.playerCard.classList.toggle("is-result", result);
-    if (editing) {
-      required("#player-card-profile").hidden = true;
-      required("#player-card-locked").hidden = true;
-    }
     this.lobby.classList.toggle("is-signed-out", locked || onAuth);
     this.syncPreviewControls();
     if (!showProfile) {
@@ -1372,13 +1562,15 @@ export class Ui {
       "aria-label",
       visible ? "Hide on-screen controls" : "Show on-screen controls",
     );
-    this.joystickToggle.title = visible ? "Controls shown" : "Controls hidden";
+    this.joystickToggle.title = visible ? "Hide on-screen controls" : "Show on-screen controls";
     this.syncPreviewControls();
   }
 
-  /** Preview-only: show touch controls while editing so mobile can test before a match. */
+  /** Preview-only: show touch controls in lobby/menu/edit so players can practice. */
   private syncPreviewControls(): void {
-    const previewOn = this.pane === "edit" && readJoystickVisible();
+    const inLobbyPreview = this.pane === "edit" || this.pane === "menu";
+    const controlsVisible = readJoystickVisible();
+    const previewOn = inLobbyPreview && controlsVisible;
     document.documentElement.classList.toggle("preview-controls-on", previewOn);
     // Match visibility is owned by setOverlay / touch-controls-on — never hide match pads here.
     if (this.overlay.dataset.hidden === "true") return;
@@ -1428,7 +1620,15 @@ export class Ui {
       }
       event.stopPropagation();
     });
+    this.signOutConfirm.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        this.closeSignOutConfirm();
+        return;
+      }
+      event.stopPropagation();
+    });
     required("#exit-stay", HTMLButtonElement).addEventListener("click", () => this.closeExitConfirm());
+    required("#sign-out-stay", HTMLButtonElement).addEventListener("click", () => this.closeSignOutConfirm());
     document.addEventListener("pointerdown", (event) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
@@ -1442,10 +1642,15 @@ export class Ui {
         if (this.exitConfirm.contains(target) || this.hudExitButton.contains(target)) return;
         this.closeExitConfirm();
       }
+      if (this.signOutConfirmOpen) {
+        if (this.signOutConfirm.contains(target) || this.signOutButton.contains(target)) return;
+        this.closeSignOutConfirm();
+      }
     });
     window.addEventListener("resize", () => {
       this.placeMixer();
       this.placeExitConfirm();
+      this.placeSignOutConfirm();
     });
     audio.onMuteChange(() => this.syncMixer());
     this.syncMixer();
@@ -1461,6 +1666,7 @@ export class Ui {
 
   private openMixer(anchor: HTMLButtonElement): void {
     this.closeExitConfirm();
+    this.closeSignOutConfirm();
     this.mixerOpen = true;
     this.mixerAnchor = anchor;
     this.mixer.hidden = false;
@@ -1486,6 +1692,7 @@ export class Ui {
 
   private openExitConfirm(): void {
     this.closeMixer();
+    this.closeSignOutConfirm();
     this.exitConfirmOpen = true;
     this.exitConfirm.hidden = false;
     this.hudExitButton.setAttribute("aria-expanded", "true");
@@ -1496,6 +1703,29 @@ export class Ui {
     this.exitConfirmOpen = false;
     this.exitConfirm.hidden = true;
     this.hudExitButton.setAttribute("aria-expanded", "false");
+  }
+
+  private toggleSignOutConfirm(): void {
+    if (this.signOutConfirmOpen) {
+      this.closeSignOutConfirm();
+      return;
+    }
+    this.openSignOutConfirm();
+  }
+
+  private openSignOutConfirm(): void {
+    this.closeMixer();
+    this.closeExitConfirm();
+    this.signOutConfirmOpen = true;
+    this.signOutConfirm.hidden = false;
+    this.signOutButton.setAttribute("aria-expanded", "true");
+    this.placeSignOutConfirm();
+  }
+
+  private closeSignOutConfirm(): void {
+    this.signOutConfirmOpen = false;
+    this.signOutConfirm.hidden = true;
+    this.signOutButton.setAttribute("aria-expanded", "false");
   }
 
   private placeMixer(): void {
@@ -1525,6 +1755,20 @@ export class Ui {
     if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - gap);
     this.exitConfirm.style.left = `${Math.round(left)}px`;
     this.exitConfirm.style.top = `${Math.round(top)}px`;
+  }
+
+  private placeSignOutConfirm(): void {
+    if (!this.signOutConfirmOpen) return;
+    const rect = this.signOutButton.getBoundingClientRect();
+    const width = this.signOutConfirm.offsetWidth;
+    const height = this.signOutConfirm.offsetHeight;
+    const gap = 8;
+    let left = rect.right - width;
+    let top = rect.bottom + gap;
+    left = Math.min(Math.max(8, left), window.innerWidth - width - 8);
+    if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - gap);
+    this.signOutConfirm.style.left = `${Math.round(left)}px`;
+    this.signOutConfirm.style.top = `${Math.round(top)}px`;
   }
 
   private syncMixer(): void {

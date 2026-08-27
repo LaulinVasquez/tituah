@@ -1,8 +1,8 @@
-import { Assets, Rectangle, Texture } from "pixi.js";
+import { Assets, Texture } from "pixi.js";
 import { resolveAssetUrl } from "../../config/runtime.js";
 import type { ThrowableId } from "@tituah/shared";
 
-/** Editor / picker icons (single-item PNGs). */
+/** Static item art (no projectile motion trail) — picker icons + hand-held overlay. */
 export const THROWABLE_ITEM_URLS: Record<ThrowableId, string> = {
   sandal: resolveAssetUrl("/assets/items/sandal.png"),
   stick: resolveAssetUrl("/assets/items/stick.png"),
@@ -10,17 +10,10 @@ export const THROWABLE_ITEM_URLS: Record<ThrowableId, string> = {
   bat: resolveAssetUrl("/assets/items/bat.png"),
 };
 
-/** Hand-held throw overlay sheet (object × spin frame). */
-export const THROWABLES_SHEET_URL = resolveAssetUrl("/assets/items/throwables.png");
-
 /** Overlay shown on throw wind-up (0). Release/follow-through have no overlay (projectile is in flight). */
 export type ThrowableOverlayFrame = 0 | 1;
 
 export interface ThrowableCrop {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
   /** Grip point on the object texture (0–1), aligned to the throwing hand. */
   gripX: number;
   gripY: number;
@@ -49,63 +42,41 @@ export const SLAP_CHARGE_HAND_ANCHORS: readonly ThrowHandAnchor[] = [
 ];
 
 /** Scale throwable art relative to the fighter frame pixel scale. */
-export const THROWABLE_OVERLAY_SCALE = 0.55;
+export const THROWABLE_OVERLAY_SCALE = 0.17;
 /** Smaller while held in the slap-charge wind-up hand. */
-export const THROWABLE_CHARGE_OVERLAY_SCALE = 0.28;
+export const THROWABLE_CHARGE_OVERLAY_SCALE = 0.07;
 
-const THROWABLE_ROWS: ThrowableId[] = ["sandal", "stick", "pan", "bat"];
-
-/** throwables.png is a 4×4 grid (object × spin frame). Cell size 384×256. */
-export const THROWABLES_COLS = 4;
-export const THROWABLES_ROWS = 4;
-export const THROWABLES_SHEET_WIDTH = 1536;
-export const THROWABLES_SHEET_HEIGHT = 1024;
-export const THROWABLES_CELL_WIDTH = THROWABLES_SHEET_WIDTH / THROWABLES_COLS;
-export const THROWABLES_CELL_HEIGHT = THROWABLES_SHEET_HEIGHT / THROWABLES_ROWS;
+const THROWABLE_IDS: ThrowableId[] = ["sandal", "stick", "pan", "bat"];
 
 /**
- * Tight crops within each 384×256 cell for wind-up (col 0) and release (col 1).
- * Grip sits near the object center inside the motion trail.
+ * Grip points on the static item PNGs (held in hand during charge / throw wind-up).
+ * Tuned toward the natural handle / strap for each object.
  */
-export const THROWABLE_CROPS: Record<ThrowableId, [ThrowableCrop, ThrowableCrop]> = {
-  sandal: [
-    { x: 64, y: 20, width: 320, height: 236, gripX: 0.52, gripY: 0.5 },
-    { x: 400, y: 4, width: 358, height: 252, gripX: 0.5, gripY: 0.5 },
-  ],
-  stick: [
-    { x: 74, y: 256, width: 310, height: 256, gripX: 0.5, gripY: 0.5 },
-    { x: 384, y: 256, width: 384, height: 256, gripX: 0.5, gripY: 0.5 },
-  ],
-  pan: [
-    { x: 41, y: 512, width: 343, height: 256, gripX: 0.5, gripY: 0.5 },
-    { x: 384, y: 512, width: 384, height: 256, gripX: 0.5, gripY: 0.5 },
-  ],
-  bat: [
-    { x: 52, y: 768, width: 332, height: 233, gripX: 0.5, gripY: 0.48 },
-    { x: 384, y: 768, width: 384, height: 237, gripX: 0.5, gripY: 0.48 },
-  ],
+export const THROWABLE_GRIPS: Record<ThrowableId, ThrowableCrop> = {
+  sandal: { gripX: 0.48, gripY: 0.55 },
+  stick: { gripX: 0.32, gripY: 0.68 },
+  pan: { gripX: 0.78, gripY: 0.28 },
+  bat: { gripX: 0.22, gripY: 0.78 },
 };
 
 let texturePromise: Promise<Record<ThrowableId, Texture[]>> | null = null;
 
 export function loadThrowableTextures(): Promise<Record<ThrowableId, Texture[]>> {
   if (texturePromise) return texturePromise;
-  texturePromise = Assets.load<Texture>(THROWABLES_SHEET_URL).then((sheet) => {
+  texturePromise = Promise.all(
+    THROWABLE_IDS.map(async (id) => {
+      const texture = await Assets.load<Texture>(THROWABLE_ITEM_URLS[id]);
+      // Same static art for both overlay frame slots (release uses the in-flight projectile).
+      return [id, [texture, texture] as Texture[]] as const;
+    }),
+  ).then((entries) => {
     const result = {} as Record<ThrowableId, Texture[]>;
-    for (const id of THROWABLE_ROWS) {
-      result[id] = THROWABLE_CROPS[id].map(
-        (crop) =>
-          new Texture({
-            source: sheet.source,
-            frame: new Rectangle(crop.x, crop.y, crop.width, crop.height),
-          }),
-      );
-    }
+    for (const [id, frames] of entries) result[id] = frames;
     return result;
   });
   return texturePromise;
 }
 
-export function throwableCrop(id: ThrowableId, frame: ThrowableOverlayFrame): ThrowableCrop {
-  return THROWABLE_CROPS[id][frame];
+export function throwableCrop(id: ThrowableId, _frame: ThrowableOverlayFrame): ThrowableCrop {
+  return THROWABLE_GRIPS[id];
 }

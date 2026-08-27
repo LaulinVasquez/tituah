@@ -1,5 +1,18 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isFighterColor, isThrowableId, SPRITE_ASSET_IDS, type ItemSlot } from "@tituah/shared";
+import {
+  accessoryUnlockLevel,
+  isAccessoryUnlocked,
+  isColorUnlocked,
+  isFighterColor,
+  isThrowableId,
+  isThrowableUnlocked,
+  colorUnlockLevel,
+  throwableUnlockLevel,
+  SPRITE_ASSET_IDS,
+  type FighterColor,
+  type ItemSlot,
+  type ThrowableId,
+} from "@tituah/shared";
 
 const BAKED_ACCESSORY_IDS = new Set<string>([
   SPRITE_ASSET_IDS.sunglasses,
@@ -97,13 +110,29 @@ export async function handleApiRequest(
       if (requestedColor && !isFighterColor(requestedColor)) {
         throw new Error("Invalid fighter color");
       }
+      const level = profile.progression.level;
+      if (requestedColor && !isColorUnlocked(level, requestedColor as FighterColor)) {
+        throw new Error(
+          `Fighter color unlocks at level ${colorUnlockLevel(requestedColor as FighterColor)}`,
+        );
+      }
       const requestedThrowable = stringField(body, "throwableId");
       if (requestedThrowable && !isThrowableId(requestedThrowable)) {
         throw new Error("Invalid throwable");
       }
+      if (requestedThrowable && !isThrowableUnlocked(level, requestedThrowable as ThrowableId)) {
+        throw new Error(
+          `Throwable unlocks at level ${throwableUnlockLevel(requestedThrowable as ThrowableId)}`,
+        );
+      }
       const headAccessory = optionalAccessoryField(body as Record<string, unknown>, "headAccessoryId");
       const faceAccessory = optionalAccessoryField(body as Record<string, unknown>, "faceAccessoryId");
       const bodyAccessory = optionalAccessoryField(body as Record<string, unknown>, "bodyAccessoryId");
+      for (const accessory of [headAccessory, faceAccessory, bodyAccessory]) {
+        if (accessory.present && accessory.value && !isAccessoryUnlocked(level, accessory.value)) {
+          throw new Error(`Accessory unlocks at level ${accessoryUnlockLevel(accessory.value)}`);
+        }
+      }
       const { usersRepository } = await import("../repositories/users.repository.js");
       await usersRepository.updateSafeProfile(tokenUser.uid, {
         displayName: stringField(body, "displayName") ?? profile.displayName,

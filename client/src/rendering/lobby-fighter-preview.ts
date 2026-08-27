@@ -135,6 +135,7 @@ export class LobbyFighterPreview {
       backgroundAlpha: 0,
       autoStart: true,
     }));
+    this.canvas.style.pointerEvents = "none";
     this.app.stage.eventMode = "none";
     this.app.stage.interactiveChildren = false;
     await Promise.all(this.fighters.map((fighter) => fighter.load()));
@@ -621,7 +622,7 @@ export class LobbyFighterPreview {
   private shouldIgnoreDemoKeyboard(): boolean {
     const active = document.activeElement;
     if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return true;
-    if (active?.closest("#audio-mixer, #exit-confirm")) return true;
+    if (active?.closest("#audio-mixer, #exit-confirm, #sign-out-confirm")) return true;
     return false;
   }
 
@@ -818,6 +819,7 @@ export class LobbyFighterPreview {
     this.canvas.style.top = "0px";
     this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
+    this.canvas.style.pointerEvents = "none";
     this.app.renderer.resize(width, height);
 
     const stageTop = Math.max(stage.top, lobby.top);

@@ -3,7 +3,7 @@ import { FLIPFLOP_THROW_ID, getAttack } from "../data/attacks.js";
 import { lerp } from "../math.js";
 import { throwableIdFromAvatar } from "../sprites/ids.js";
 import type { PlayerInput, PlayerState, Projectile } from "../types.js";
-import { cancelAttackCharge, getCharge } from "./combat.js";
+import { cancelAttackCharge, getCharge, getChargedAttackValues } from "./combat.js";
 import { createProjectile, playerHasActiveFlipflop } from "./projectiles.js";
 
 const THROW_SPAWN_Y = -PLAYER_HEIGHT * 0.55;
@@ -79,6 +79,7 @@ export function throwFlipflop(
   if (!projectileDef) return null;
 
   const t = Math.min(1, Math.max(0, charge));
+  const values = getChargedAttackValues(attack, t);
   const facingAngle = player.facing === 1 ? THROW_ARC : Math.PI - THROW_ARC;
   const speed = lerp(projectileDef.speed, projectileDef.maxSpeed ?? projectileDef.speed, t);
 
@@ -100,8 +101,8 @@ export function throwFlipflop(
       x: Math.cos(facingAngle) * speed,
       y: Math.sin(facingAngle) * speed,
     },
-    damage: attack.baseDamage,
-    knockback: attack.baseKnockback,
+    damage: values.damage,
+    knockback: values.knockback,
     radius: projectileDef.radius,
     lifetime: projectileDef.lifetime,
   });

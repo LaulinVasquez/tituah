@@ -1,7 +1,8 @@
-import { FLIPFLOP_THROW_ID } from "../data/attacks.js";
-import { aabbOverlap } from "../math.js";
+import { FLIPFLOP_THROW_ID, getAttack } from "../data/attacks.js";
+import { KNOCKBACK_SCALING, MIN_KNOCKBACK_SCALE } from "../data/physics.js";
+import { aabbOverlap, clamp } from "../math.js";
 import type { HitEvent, PlayerState, Projectile } from "../types.js";
-import { getBodyAABB } from "./combat.js";
+import { getBodyAABB, getChargedAttackValues } from "./combat.js";
 
 export interface BlastBounds {
   left: number;
@@ -81,22 +82,36 @@ export function resolveProjectileHits(
       };
       if (!aabbOverlap(body, box)) continue;
 
+      const attack = getAttack(projectile.attackId);
+      const damageSpan = (attack.maxDamage ?? attack.baseDamage) - attack.baseDamage;
+      const charge =
+        damageSpan > 0
+          ? clamp((projectile.damage - attack.baseDamage) / damageSpan, 0, 1)
+          : 1;
+      const values = getChargedAttackValues(attack, charge);
+      const scale = Math.max(
+        MIN_KNOCKBACK_SCALE,
+        1 + player.damagePercent * KNOCKBACK_SCALING,
+      );
       const direction = player.position.x >= projectile.position.x ? 1 : -1;
-      player.damagePercent += projectile.damage;
-      player.health = Math.max(0, player.health - projectile.damage);
-      player.velocity.x += projectile.knockback * direction;
-      player.velocity.y -= projectile.knockback * 0.35;
+      const knockbackX = values.knockback * scale * direction;
+      const knockbackY = -values.verticalKnockback * scale;
+
+      player.damagePercent += values.damage;
+      player.health = Math.max(0, player.health - values.damage);
+      player.velocity.x += knockbackX;
+      player.velocity.y += knockbackY;
       player.grounded = false;
       hits.push({
         attackerId: projectile.ownerId,
         targetId: player.id,
         attackId: projectile.attackId,
-        damage: projectile.damage,
+        damage: values.damage,
         knockback: {
-          x: projectile.knockback * direction,
-          y: -projectile.knockback * 0.35,
+          x: knockbackX,
+          y: knockbackY,
         },
-        charge: 1,
+        charge: values.charge,
       });
       consumed = true;
       break;
