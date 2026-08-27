@@ -2,10 +2,15 @@ import { emptyInput, type PlayerInput } from "@tituah/shared";
 
 export interface SampledInput {
   input: PlayerInput;
-  attackEdge: "start" | "release" | null;
-  throwEdge: boolean;
+  /** True when charge should begin this frame (may pair with attackRelease for a tap). */
+  attackStart: boolean;
+  /** True when charge should release into a hit this frame. */
+  attackRelease: boolean;
+  /** True when throw charge should begin (may pair with throwRelease for a tap). */
+  throwStart: boolean;
+  /** True when throw charge should release into a throw. */
+  throwRelease: boolean;
   runningFourSlapEdge: boolean;
-  quickSlapPulse: boolean;
 }
 
 type VirtualAction = "left" | "right" | "down" | "up" | "jump" | "attack" | "throw";
@@ -16,13 +21,13 @@ const STICK_MOVE = 0.28;
 const STICK_JUMP = 0.38;
 const STICK_DOWN = 0.42;
 const DOUBLE_TAP_WINDOW_MS = 400;
-const CHARGE_HOLD_MS = 220;
 
 const EMPTY_EDGES: Omit<SampledInput, "input"> = {
-  attackEdge: null,
-  throwEdge: false,
+  attackStart: false,
+  attackRelease: false,
+  throwStart: false,
+  throwRelease: false,
   runningFourSlapEdge: false,
-  quickSlapPulse: false,
 };
 
 export class InputManager {
@@ -33,11 +38,22 @@ export class InputManager {
   private aimAngle = 0;
   private previousAttackHeld = false;
   private previousThrowHeld = false;
+  private throwPressStartedAt = 0;
+  private throwChargeStarted = false;
+  /** Press+release finished before any sim frame saw the hold — fire start+release together. */
+  private pendingThrowFire = false;
   private attackPressStartedAt = 0;
   private attackTapTimes: number[] = [];
   private latchedCombo: "running" | null = null;
+  /** Charge was started via consumeEdges (or pending tap) and not yet released. */
   private chargeStarted = false;
-  private latchedQuickSlap = false;
+  /** Press+release finished before any sim frame saw the hold — fire start+release together. */
+  private pendingTapFire = false;
+  /** Suppress attackHeld for the combo frame so syncAttackFromInput does not re-start a slap. */
+  private suppressAttackHeld = false;
+  /** After a normal slap release while moving; second tap can still upgrade to run-slap. */
+  private lastReleaseAt = 0;
+  private lastReleaseWasMoving = false;
   private frameToken = 0;
   private lastFrameToken = -1;
   private edgesConsumed = false;
@@ -78,17 +94,13 @@ export class InputManager {
     if (frameToken === this.lastFrameToken) return;
     this.lastFrameToken = frameToken;
     this.edgesConsumed = false;
+    this.suppressAttackHeld = false;
 
     const now = performance.now();
-    const attackHeld = this.isAttackHeld();
     this.attackTapTimes = this.attackTapTimes.filter((tap) => now - tap <= DOUBLE_TAP_WINDOW_MS);
-    if (
-      !attackHeld
-      && this.attackTapTimes.length === 1
-      && now - this.attackTapTimes[0] >= DOUBLE_TAP_WINDOW_MS
-    ) {
-      this.latchedQuickSlap = true;
-      this.attackTapTimes = [];
+    if (this.lastReleaseAt > 0 && now - this.lastReleaseAt > DOUBLE_TAP_WINDOW_MS) {
+      this.lastReleaseAt = 0;
+      this.lastReleaseWasMoving = false;
     }
   }
 
@@ -104,48 +116,80 @@ export class InputManager {
     if (this.latchedCombo) {
       this.latchedCombo = null;
       this.chargeStarted = false;
+      this.pendingTapFire = false;
       this.attackTapTimes = [];
-    }
-
-    const quickSlapPulse = this.latchedQuickSlap;
-    this.latchedQuickSlap = false;
-
-    let attackEdge: SampledInput["attackEdge"] = null;
-
-    if (attackHeld && !this.previousAttackHeld) {
-      this.attackPressStartedAt = now;
-    }
-
-    if (
-      attackHeld
-      && !this.chargeStarted
-      && !runningFourSlapEdge
-      && this.attackTapTimes.length === 0
-      && now - this.attackPressStartedAt >= CHARGE_HOLD_MS
-    ) {
-      attackEdge = "start";
-      this.chargeStarted = true;
-    }
-
-    if (!attackHeld && this.previousAttackHeld) {
-      if (this.chargeStarted) {
-        attackEdge = "release";
-      }
-      this.chargeStarted = false;
+      this.lastReleaseAt = 0;
+      this.lastReleaseWasMoving = false;
+      this.suppressAttackHeld = true;
       this.attackPressStartedAt = 0;
     }
 
-    this.previousAttackHeld = attackHeld;
+    let attackStart = false;
+    let attackRelease = false;
 
-    const throwHeld = this.virtual.has("throw") || this.keys.has("j");
-    const throwEdge = throwHeld && !this.previousThrowHeld;
-    this.previousThrowHeld = throwHeld;
+    if (runningFourSlapEdge) {
+      this.previousAttackHeld = attackHeld;
+    } else if (this.pendingTapFire) {
+      // Sub-frame tap: charge starts and releases in one pulse (minimal charge hit).
+      this.pendingTapFire = false;
+      attackStart = true;
+      attackRelease = true;
+      this.chargeStarted = false;
+      this.attackPressStartedAt = 0;
+      this.lastReleaseAt = now;
+      this.lastReleaseWasMoving = this.isMovingHorizontally();
+      this.previousAttackHeld = attackHeld;
+    } else {
+      if (attackHeld && !this.previousAttackHeld) {
+        if (this.attackPressStartedAt <= 0) this.attackPressStartedAt = now;
+        attackStart = true;
+        this.chargeStarted = true;
+      }
+
+      if (!attackHeld && this.previousAttackHeld) {
+        if (this.chargeStarted) {
+          attackRelease = true;
+          this.lastReleaseAt = now;
+          this.lastReleaseWasMoving = this.isMovingHorizontally();
+        }
+        this.chargeStarted = false;
+        this.attackPressStartedAt = 0;
+      }
+
+      this.previousAttackHeld = attackHeld;
+    }
+
+    const throwHeld = this.isThrowHeld();
+    let throwStart = false;
+    let throwRelease = false;
+
+    if (this.pendingThrowFire) {
+      this.pendingThrowFire = false;
+      throwStart = true;
+      throwRelease = true;
+      this.throwChargeStarted = false;
+      this.throwPressStartedAt = 0;
+      this.previousThrowHeld = throwHeld;
+    } else {
+      if (throwHeld && !this.previousThrowHeld) {
+        if (this.throwPressStartedAt <= 0) this.throwPressStartedAt = now;
+        throwStart = true;
+        this.throwChargeStarted = true;
+      }
+      if (!throwHeld && this.previousThrowHeld) {
+        if (this.throwChargeStarted) throwRelease = true;
+        this.throwChargeStarted = false;
+        this.throwPressStartedAt = 0;
+      }
+      this.previousThrowHeld = throwHeld;
+    }
 
     return {
-      attackEdge,
-      throwEdge,
+      attackStart,
+      attackRelease,
+      throwStart,
+      throwRelease,
       runningFourSlapEdge,
-      quickSlapPulse,
     };
   }
 
@@ -161,7 +205,9 @@ export class InputManager {
         || this.keys.has("arrowup")
         || this.virtual.has("jump")
         || this.virtual.has("up"),
-      attackHeld: this.isAttackHeld(),
+      // Report held immediately so charge begins on press (tap = short charge + release).
+      attackHeld: this.isAttackHeld() && !this.suppressAttackHeld,
+      throwHeld: this.isThrowHeld(),
       aimAngle: this.aimAngle,
       runningSlap: false,
     };
@@ -188,7 +234,8 @@ export class InputManager {
         || this.keys.has("arrowup")
         || this.virtual.has("jump")
         || this.virtual.has("up"),
-      attackHeld: this.isAttackHeld(),
+      attackHeld: this.isAttackHeld() && !this.suppressAttackHeld,
+      throwHeld: this.isThrowHeld(),
       aimAngle: this.aimAngle,
     };
   }
@@ -216,24 +263,79 @@ export class InputManager {
     return this.pointerDown || this.virtual.has("attack") || this.keys.has("h");
   }
 
+  private isThrowHeld(): boolean {
+    return this.virtual.has("throw") || this.keys.has("j");
+  }
+
+  private noteThrowPressed(now: number): void {
+    if (!this.isThrowHeld()) {
+      this.throwPressStartedAt = now;
+    }
+  }
+
+  private noteThrowReleased(_now: number): void {
+    if (this.isThrowHeld()) return;
+    if (!this.throwChargeStarted && !this.previousThrowHeld) {
+      if (this.throwPressStartedAt > 0) {
+        this.pendingThrowFire = true;
+      }
+    }
+    if (!this.throwChargeStarted) {
+      this.throwPressStartedAt = 0;
+    }
+  }
+
   private registerAttackTap(now: number): void {
     this.attackTapTimes = this.attackTapTimes.filter((tap) => now - tap <= DOUBLE_TAP_WINDOW_MS);
     this.attackTapTimes.push(now);
-    if (this.attackTapTimes.length >= 2) {
+    const recentMovingRelease =
+      this.lastReleaseWasMoving
+      && this.lastReleaseAt > 0
+      && now - this.lastReleaseAt <= DOUBLE_TAP_WINDOW_MS;
+    // Two taps, or a second tap right after a released slap while still moving.
+    if (
+      this.attackTapTimes.length >= 2
+      || (recentMovingRelease && this.isMovingHorizontally())
+    ) {
       if (this.isMovingHorizontally()) {
         this.latchedCombo = "running";
+        this.suppressAttackHeld = true;
       }
       this.attackTapTimes = [];
       this.chargeStarted = false;
-      this.latchedQuickSlap = false;
+      this.pendingTapFire = false;
+      this.lastReleaseAt = 0;
+      this.lastReleaseWasMoving = false;
+    }
+  }
+
+  /** Call before the attack source is added to held state. */
+  private noteAttackPressed(now: number): void {
+    if (!this.isAttackHeld()) {
+      this.attackPressStartedAt = now;
+    }
+    this.registerAttackTap(now);
+  }
+
+  /** Call after the attack source is removed from held state. */
+  private noteAttackReleased(_now: number): void {
+    if (this.isAttackHeld()) return;
+    // Press and release finished before consumeEdges ever saw a hold.
+    if (!this.chargeStarted && !this.previousAttackHeld && !this.latchedCombo) {
+      if (this.attackPressStartedAt > 0) {
+        this.pendingTapFire = true;
+      }
+    }
+    if (!this.chargeStarted) {
+      this.attackPressStartedAt = 0;
     }
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return;
     if (event.pointerType === "touch") return;
+    this.noteAttackPressed(performance.now());
     this.pointerDown = true;
-    this.registerAttackTap(performance.now());
     this.updateAim(event);
   };
 
@@ -244,8 +346,13 @@ export class InputManager {
       if (binding.kind === "stick") this.resetStick();
       this.syncVirtual();
     }
-    if (event.pointerType === "touch") return;
+    if (event.pointerType === "touch") {
+      this.noteAttackReleased(performance.now());
+      this.noteThrowReleased(performance.now());
+      return;
+    }
     this.pointerDown = false;
+    this.noteAttackReleased(performance.now());
   };
 
   private readonly onTouchDown = (event: PointerEvent): void => {
@@ -255,10 +362,12 @@ export class InputManager {
     if (!action) return;
     event.preventDefault();
     event.stopPropagation();
-    this.pointers.set(event.pointerId, { kind: "button", action });
     if (action === "attack") {
-      this.registerAttackTap(performance.now());
+      this.noteAttackPressed(performance.now());
+    } else if (action === "throw") {
+      this.noteThrowPressed(performance.now());
     }
+    this.pointers.set(event.pointerId, { kind: "button", action });
     this.syncVirtual();
   };
 
@@ -282,15 +391,25 @@ export class InputManager {
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     const key = event.key.toLowerCase();
-    this.keys.add(key);
     if (key === "h" && !event.repeat) {
-      this.registerAttackTap(performance.now());
+      this.noteAttackPressed(performance.now());
     }
+    if (key === "j" && !event.repeat) {
+      this.noteThrowPressed(performance.now());
+    }
+    this.keys.add(key);
     if (event.key === " " || event.key.startsWith("Arrow")) event.preventDefault();
   };
 
   private readonly onKeyUp = (event: KeyboardEvent): void => {
-    this.keys.delete(event.key.toLowerCase());
+    const key = event.key.toLowerCase();
+    this.keys.delete(key);
+    if (key === "h") {
+      this.noteAttackReleased(performance.now());
+    }
+    if (key === "j") {
+      this.noteThrowReleased(performance.now());
+    }
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
@@ -304,11 +423,17 @@ export class InputManager {
     this.pointerDown = false;
     this.previousAttackHeld = false;
     this.previousThrowHeld = false;
+    this.throwPressStartedAt = 0;
+    this.throwChargeStarted = false;
+    this.pendingThrowFire = false;
     this.attackPressStartedAt = 0;
     this.attackTapTimes = [];
     this.latchedCombo = null;
     this.chargeStarted = false;
-    this.latchedQuickSlap = false;
+    this.pendingTapFire = false;
+    this.suppressAttackHeld = false;
+    this.lastReleaseAt = 0;
+    this.lastReleaseWasMoving = false;
     this.edgesConsumed = false;
     this.lastFrameToken = -1;
     this.resetStick();

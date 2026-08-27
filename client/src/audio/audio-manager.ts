@@ -134,9 +134,16 @@ export class AudioManager {
 
   /**
    * Must run inside a user-gesture call stack on Safari/iOS.
-   * Creates (or resumes) the AudioContext, decodes any prefetched bytes, starts music.
+   * Creates/resumes the AudioContext, primes it, starts music ASAP, then fills SFX.
    */
   async unlock(): Promise<void> {
+    // Do sync gesture work before any await — Safari only unlocks in this stack.
+    const context = this.ensureContext();
+    this.primeContext(context);
+    if (context.state !== "running") {
+      void context.resume().catch(() => undefined);
+    }
+
     if (this.unlockPromise) return this.unlockPromise;
     this.unlockPromise = this.unlockInner();
     try {
@@ -148,6 +155,8 @@ export class AudioManager {
 
   play(id: SfxId, options?: { volume?: number; rate?: number; loop?: boolean }): void {
     if (options?.loop && this.isPlaying(id)) return;
+    // Charge cue must never stack — overlapping plays caused the old throw glitch.
+    if (id === "slapCharge" && this.isPlaying(id)) return;
 
     const context = this.context;
     // Safari: voices started while suspended never become audible.
@@ -202,6 +211,8 @@ export class AudioManager {
   }
 
   startMusic(): void {
+    if (!this.mixer.musicEnabled) return;
+    if (this.isPlaying("music")) return;
     this.playLoop("music");
   }
 
@@ -224,15 +235,27 @@ export class AudioManager {
   }
 
   private async unlockInner(): Promise<void> {
-    // Create the context inside the gesture whenever possible (Safari requirement).
     const context = this.ensureContext();
     if (context.state !== "running") {
       await context.resume().catch(() => undefined);
     }
+
+    // Safari: don't wait for every SFX — get music decoded and playing first.
+    await this.ensureDecoded("music");
+    if (context.state !== "running") {
+      await context.resume().catch(() => undefined);
+    }
     this.unlocked = context.state === "running";
-    await this.load();
-    await this.decodePending();
+    this.applyMixer();
     if (this.unlocked) this.startMusic();
+
+    // Remaining assets in the background.
+    void this.load().then(async () => {
+      await this.decodePending();
+      if (this.unlocked && this.context?.state === "running" && !this.isPlaying("music")) {
+        this.startMusic();
+      }
+    });
   }
 
   private async loadAll(): Promise<void> {
@@ -246,7 +269,27 @@ export class AudioManager {
       }),
     );
     if (this.context) await this.decodePending();
-    if (this.unlocked && this.context?.state === "running") this.startMusic();
+  }
+
+  private async ensureDecoded(id: SfxId): Promise<void> {
+    if (this.buffers.has(id)) return;
+    let data = this.pending.get(id);
+    if (!data) {
+      const fetched = await this.fetchBytes(SFX[id].file);
+      if (!fetched) return;
+      data = fetched;
+      this.pending.set(id, data);
+    }
+    const context = this.context;
+    if (!context) return;
+    try {
+      // slice() — Safari/Chrome detach the buffer on decode.
+      const buffer = await context.decodeAudioData(data.slice(0));
+      this.buffers.set(id, buffer);
+      this.pending.delete(id);
+    } catch {
+      // Leave pending for a later retry.
+    }
   }
 
   private async decodePending(): Promise<void> {
@@ -290,6 +333,19 @@ export class AudioManager {
     return null;
   }
 
+  /** Silent buffer start — keeps Safari AudioContext alive through the gesture. */
+  private primeContext(context: AudioContext): void {
+    try {
+      const buffer = context.createBuffer(1, 1, context.sampleRate || 22050);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.start(0);
+    } catch {
+      // Best-effort.
+    }
+  }
+
   private ensureContext(): AudioContext {
     if (this.context && this.master && this.musicGain && this.sfxGain) return this.context;
     const context = createAudioContext();
@@ -310,9 +366,25 @@ export class AudioManager {
     this.sfxGain = sfxGain;
     this.sfxBus = sfxBus;
     this.applyMixer();
-    // iOS often re-suspends after backgrounding — re-arm unlock on next gesture.
+    // iOS often re-suspends after backgrounding — drop looping music so unlock can restart it.
     context.addEventListener("statechange", () => {
-      this.unlocked = context.state === "running";
+      const running = context.state === "running";
+      this.unlocked = running;
+      if (!running) {
+        const playing = this.voices.get("music");
+        if (playing) {
+          for (const { source } of playing) {
+            try {
+              source.stop();
+            } catch {
+              // Already stopped.
+            }
+          }
+          this.voices.delete("music");
+        }
+      } else if (this.mixer.musicEnabled && !this.isPlaying("music")) {
+        this.startMusic();
+      }
     });
     return context;
   }

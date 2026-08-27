@@ -49,6 +49,7 @@ export const RUN_SLAP_COMBO: AttackDefinition = {
 export const FLIPFLOP_THROW: AttackDefinition = {
   id: FLIPFLOP_THROW_ID,
   type: "throwable",
+  maxChargeTime: 1.05,
   baseDamage: 14,
   baseKnockback: 420,
   verticalKnockback: 220,
@@ -62,6 +63,7 @@ export const FLIPFLOP_THROW: AttackDefinition = {
   },
   projectile: {
     speed: 920,
+    maxSpeed: 1680,
     radius: 30,
     lifetime: 2.4,
   },

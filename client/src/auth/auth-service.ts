@@ -121,7 +121,16 @@ export class AuthService {
     baseAvatarId?: string;
     throwableId?: string;
   }): Promise<UserProfile> {
-    this.profile = (await usersRepository.updateSafe(data)) ?? this.profile;
+    const previous = this.profile;
+    const saved = await usersRepository.updateSafe(data);
+    this.profile = saved ?? previous;
+    // Keep local patches if the server echo is missing fields mid-race.
+    if (this.profile && previous && data.displayName) {
+      this.profile = {
+        ...this.profile,
+        displayName: data.displayName.trim() || this.profile.displayName,
+      };
+    }
     this.emit();
     if (!this.profile) throw new Error("Could not save fighter");
     return this.profile;

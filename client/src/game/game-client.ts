@@ -2,8 +2,12 @@ import {
   clonePlayerState,
   DEFAULT_STAGE,
   parsePlayerCount,
-  TICK_DT,
+  playerCanStartAttack,
+  releaseAttack,
+  startAttack,
+  startThrowCharge,
   throwFlipflop,
+  TICK_DT,
   triggerRunningFourSlap,
   type FighterColor,
   type PlayerState,
@@ -57,13 +61,13 @@ export class GameClient {
       if (this.state.snapshot?.status === "playing") {
         this.inRoom = false;
         this.seekingMatch = false;
-        this.ui.showMenu(authService.profile);
+        this.showHome();
         return;
       }
       if (this.seekingMatch || this.inRoom) {
         this.seekingMatch = false;
         this.inRoom = false;
-        this.ui.showMenu(authService.profile, "Connection closed.");
+        this.showHome("Connection closed.");
       }
     });
 
@@ -82,14 +86,16 @@ export class GameClient {
     this.ui.onSaveAvatar(() => void this.saveFighter());
     this.ui.onSelectColor((color) => this.persistColor(color));
     this.ui.onSelectThrowable((throwableId) => this.persistThrowable(throwableId));
-    this.ui.onBackFromEdit(() => this.ui.closeEditor());
+    this.ui.onBackFromEdit(() => this.leaveEditor());
 
     authService.start();
     authService.subscribe(() => {
       if (this.state.playing()) return;
       if (!authService.user) {
-        this.ui.showAuth();
         this.ui.setPreview(null);
+        if (this.ui.currentPane !== "landing" && this.ui.currentPane !== "login") {
+          this.ui.showAuth();
+        }
         return;
       }
       if (!authService.profile) return;
@@ -99,7 +105,7 @@ export class GameClient {
       if (pane === "waiting" || pane === "result" || this.ui.editing) return;
       if (pane === "login") return;
       if (pane === "landing" || pane === "menu") {
-        this.ui.showMenu(authService.profile, undefined, this.guestSession());
+        this.showHome();
       }
     });
 
@@ -112,9 +118,11 @@ export class GameClient {
     });
     void audio.load();
     const unlockAudio = () => void audio.unlock();
-    window.addEventListener("pointerdown", unlockAudio);
-    window.addEventListener("touchstart", unlockAudio, { passive: true });
-    window.addEventListener("keydown", unlockAudio);
+    window.addEventListener("pointerdown", unlockAudio, { capture: true });
+    window.addEventListener("touchstart", unlockAudio, { capture: true, passive: true });
+    window.addEventListener("keydown", unlockAudio, { capture: true });
+    // Safari iOS: also catch the first click (pointerdown alone can be insufficient).
+    window.addEventListener("click", unlockAudio, { capture: true });
     if (!authService.user) this.ui.showAuth();
     this.loop();
   }
@@ -144,7 +152,7 @@ export class GameClient {
       this.seekingMatch = false;
       this.inRoom = false;
       this.ui.setLoading(false);
-      this.ui.showMenu(authService.profile, messageOf(error));
+      this.showHome(messageOf(error));
     }
   }
 
@@ -153,7 +161,7 @@ export class GameClient {
     this.seekingMatch = false;
     this.inRoom = false;
     this.socket.disconnect();
-    this.ui.showMenu(authService.profile);
+    this.showHome();
   }
 
   private readyUp(): void {
@@ -177,7 +185,7 @@ export class GameClient {
     } catch (error) {
       this.seekingMatch = false;
       this.inRoom = false;
-      if (authService.profile) this.ui.showMenu(authService.profile, messageOf(error));
+      if (authService.profile) this.showHome(messageOf(error));
       else this.ui.showAuth(messageOf(error));
     }
   }
@@ -204,7 +212,7 @@ export class GameClient {
         );
       }
       this.ui.rememberName();
-      this.ui.showMenu(authService.profile, undefined, this.guestSession());
+      this.showHome();
       void this.refreshPreview();
     } catch (error) {
       this.ui.showAuth(messageOf(error));
@@ -226,13 +234,31 @@ export class GameClient {
     return authService.user?.isAnonymous === true;
   }
 
+  private accountEmail(): string | null {
+    return authService.user?.email ?? null;
+  }
+
+  private showHome(error?: string): void {
+    this.ui.showMenu(authService.profile, error, this.guestSession(), this.accountEmail());
+  }
+
+  private leaveEditor(): void {
+    // Guests are anonymous Firebase users — still signed in. Always return to lobby
+    // while a session exists; never bounce to the logged-out landing screen.
+    if (authService.user) {
+      this.showHome();
+      return;
+    }
+    this.ui.closeEditor();
+  }
+
   private async refreshPreview(): Promise<void> {
     const profile = authService.profile;
     if (!profile) {
       this.ui.setPreview(null);
       return;
     }
-    this.ui.setPreview(profile, this.guestSession());
+    this.ui.setPreview(profile, this.guestSession(), this.accountEmail());
   }
 
   private async saveFighter(): Promise<void> {
@@ -240,22 +266,33 @@ export class GameClient {
     const color = this.ui.fighterColor();
     const throwableId = this.ui.fighterThrowable();
     this.ui.rememberName(name);
-    if (authService.profile) {
-      authService.patchProfile({ displayName: name });
-      authService.patchAvatar({
-        ...authService.profile.avatar,
-        baseAvatarId: color,
-        throwableId,
-      });
+
+    const profile = authService.profile;
+    if (!profile || !authService.user) {
+      this.ui.showEditor(profile, "Not signed in. Please sign in again.");
+      return;
     }
-    this.ui.showMenu(authService.profile, undefined, this.guestSession());
+
+    authService.patchProfile({ displayName: name });
+    authService.patchAvatar({
+      ...profile.avatar,
+      baseAvatarId: color,
+      throwableId,
+    });
+
+    // Return to lobby immediately with the optimistic profile so a slow/failed
+    // save cannot bounce the UI to the logged-out landing screen.
+    this.ui.showMenu(authService.profile, undefined, this.guestSession(), this.accountEmail());
+
     try {
       await this.colorSave.catch(() => undefined);
       await this.throwableSave.catch(() => undefined);
       await authService.saveFighter({ displayName: name, baseAvatarId: color, throwableId });
+      if (!authService.user) return;
       void this.refreshPreview();
     } catch (error) {
-      this.ui.showMenu(authService.profile, messageOf(error), this.guestSession());
+      if (!authService.user) return;
+      this.showHome(messageOf(error));
     }
   }
 
@@ -279,7 +316,7 @@ export class GameClient {
 
   private async openEditor(error?: string): Promise<void> {
     const profile = authService.profile ?? (await authService.refreshProfile().catch(() => null));
-    this.ui.showEditor(profile, error);
+    this.ui.showEditor(profile, error, this.guestSession(), this.accountEmail());
   }
 
   private onServerMessage(message: ServerMessage): void {
@@ -287,7 +324,7 @@ export class GameClient {
       this.seekingMatch = false;
       this.inRoom = false;
       this.socket.disconnect();
-      this.ui.showMenu(authService.profile, message.message ?? "Could not join match.");
+      this.showHome(message.message ?? "Could not join match.");
       return;
     }
     if (message.type === "player_hit") {
@@ -415,14 +452,16 @@ export class GameClient {
     input.runningSlap = edges.runningFourSlapEdge;
 
     this.socket.send({ type: "input", input });
-    if (edges.quickSlapPulse) {
-      this.socket.send({ type: "attack_start" });
-      this.socket.send({ type: "attack_release" });
-    } else if (!edges.runningFourSlapEdge) {
-      if (edges.attackEdge === "start") this.socket.send({ type: "attack_start" });
-      if (edges.attackEdge === "release") this.socket.send({ type: "attack_release" });
+    if (edges.runningFourSlapEdge) {
+      // Edge must be latched server-side; a one-frame input.runningSlap is often
+      // overwritten before the next sim tick and never applies hitboxes.
+      this.socket.send({ type: "running_four_slap" });
+    } else {
+      if (edges.attackStart) this.socket.send({ type: "attack_start" });
+      if (edges.attackRelease) this.socket.send({ type: "attack_release" });
     }
-    if (edges.throwEdge) this.socket.send({ type: "throw" });
+    if (edges.throwStart) this.socket.send({ type: "throw_start" });
+    if (edges.throwRelease) this.socket.send({ type: "throw_release" });
 
     this.localTime += TICK_DT;
     const base =
@@ -434,11 +473,24 @@ export class GameClient {
     }
     const predicted = clonePlayerState(base);
     const projectiles = this.state.snapshot?.projectiles ?? [];
-    if (edges.throwEdge) {
+    if (edges.runningFourSlapEdge) {
+      triggerRunningFourSlap(predicted, this.localTime);
+    } else {
+      if (edges.attackStart && playerCanStartAttack(predicted)) {
+        startAttack(predicted, this.localTime);
+      }
+      if (edges.attackRelease) {
+        releaseAttack(predicted, this.localTime);
+      }
+    }
+    // Movement first so facing is current before any throw release this frame.
+    this.prediction.apply(predicted, input, this.localTime, projectiles);
+    if (edges.throwStart) {
+      startThrowCharge(predicted, this.localTime, projectiles);
+    }
+    if (edges.throwRelease) {
       throwFlipflop(predicted, this.localTime, input.aimAngle, projectiles);
     }
-    if (edges.runningFourSlapEdge) triggerRunningFourSlap(predicted, this.localTime);
-    this.prediction.apply(predicted, input, this.localTime);
     this.state.predicted = predicted;
     sfx.observe(predicted);
   }

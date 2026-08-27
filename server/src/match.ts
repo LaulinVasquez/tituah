@@ -23,11 +23,15 @@ import {
   startAttack as beginAttack,
   releaseAttack as finishAttack,
   syncAttackFromInput,
+  syncThrowFromInput,
   triggerRunningFourSlap,
   comboHitTime,
   RUN_SLAP_HIT_COUNT,
   RUN_SLAP_COMBO_CHARGE,
   throwFlipflop,
+  startThrowCharge,
+  updateThrowCharge,
+  cancelThrowCharge,
   TICK_DT,
   updateAttackState,
   updateProjectiles,
@@ -88,6 +92,8 @@ export class Match {
   private readonly previousInputs = new Map<string, PlayerInput>();
   private readonly pendingAttackStarts = new Set<string>();
   private readonly pendingAttackReleases = new Set<string>();
+  private readonly pendingThrowStarts = new Set<string>();
+  private readonly pendingThrowReleases = new Set<string>();
   private readonly pendingThrows = new Set<string>();
   private readonly pendingRunningFourSlaps = new Set<string>();
   private readonly activeHitboxes: ActiveHitbox[] = [];
@@ -136,6 +142,7 @@ export class Match {
       attackState: { type: "idle" },
       throwCooldownEndsAt: 0,
       throwAnimUntil: 0,
+      throwChargeStartedAt: 0,
       lives: PLAYER_LIVES,
       lastInputSeq: 0,
       spawnIndex,
@@ -237,6 +244,14 @@ export class Match {
     this.pendingAttackReleases.add(playerId);
   }
 
+  throwStart(playerId: string): void {
+    this.pendingThrowStarts.add(playerId);
+  }
+
+  throwRelease(playerId: string): void {
+    this.pendingThrowReleases.add(playerId);
+  }
+
   throw(playerId: string): void {
     this.pendingThrows.add(playerId);
   }
@@ -336,6 +351,8 @@ export class Match {
 
     for (const player of this.players.values()) {
       updateAttackState(player, this.time);
+      const autoThrow = updateThrowCharge(player, this.time, this.projectiles);
+      if (autoThrow) this.projectiles.push(autoThrow);
       if (player.attackState.type === "active") {
         this.ensureActiveHitbox(player);
       }
@@ -483,12 +500,26 @@ export class Match {
       finishAttack(player, this.time);
       this.pendingAttackReleases.delete(player.id);
     }
-    if (this.pendingThrows.has(player.id)) {
+    if (this.pendingThrowStarts.has(player.id)) {
+      startThrowCharge(player, this.time, this.projectiles);
+      this.pendingThrowStarts.delete(player.id);
+    }
+    if (this.pendingThrowReleases.has(player.id)) {
       const projectile = throwFlipflop(player, this.time, input.aimAngle, this.projectiles);
+      if (projectile) this.projectiles.push(projectile);
+      else cancelThrowCharge(player);
+      this.pendingThrowReleases.delete(player.id);
+    }
+    if (this.pendingThrows.has(player.id)) {
+      // Legacy instant throw → base power.
+      cancelThrowCharge(player);
+      const projectile = throwFlipflop(player, this.time, input.aimAngle, this.projectiles, 0);
       if (projectile) this.projectiles.push(projectile);
       this.pendingThrows.delete(player.id);
     }
     syncAttackFromInput(player, input, previous, this.time);
+    const thrown = syncThrowFromInput(player, input, previous, this.time, this.projectiles);
+    if (thrown) this.projectiles.push(thrown);
   }
 
   private ensureActiveHitbox(player: PlayerState): void {
@@ -579,6 +610,7 @@ export class Match {
     player.attackState = { type: "idle" };
     player.throwCooldownEndsAt = 0;
     player.throwAnimUntil = 0;
+    player.throwChargeStartedAt = 0;
     player.jumpsRemaining = MAX_JUMPS;
     player.health = PLAYER_MAX_HEALTH;
 
@@ -603,6 +635,7 @@ export class Match {
     player.attackState = { type: "idle" };
     player.throwCooldownEndsAt = 0;
     player.throwAnimUntil = 0;
+    player.throwChargeStartedAt = 0;
     player.invulnerableUntil = this.time + RESPAWN_INVULN_TIME;
     this.emit(null, {
       type: "player_respawn",
@@ -625,6 +658,7 @@ export class Match {
       player.attackState = { type: "idle" };
       player.throwCooldownEndsAt = 0;
       player.throwAnimUntil = 0;
+      player.throwChargeStartedAt = 0;
       player.lives = PLAYER_LIVES;
       player.invulnerableUntil = this.time + 0.4;
     }

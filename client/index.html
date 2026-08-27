@@ -13,20 +13,20 @@
           <div class="fighter" data-slot="0">
             <span class="name">P1</span>
             <span class="lives"></span>
+            <span class="percent">0%</span>
             <div class="throw-cooldown" hidden aria-hidden="true" aria-label="Throw cooldown">
               <span class="throw-cooldown-icon" aria-hidden="true">🩴</span>
               <span class="throw-cooldown-ring"></span>
             </div>
-            <span class="percent">0%</span>
           </div>
           <div class="fighter" data-slot="2" hidden>
             <span class="name">P3</span>
             <span class="lives"></span>
+            <span class="percent">0%</span>
             <div class="throw-cooldown" hidden aria-hidden="true" aria-label="Throw cooldown">
               <span class="throw-cooldown-icon" aria-hidden="true">🩴</span>
               <span class="throw-cooldown-ring"></span>
             </div>
-            <span class="percent">0%</span>
           </div>
         </div>
         <div class="hud-center">
@@ -78,20 +78,20 @@
           <div class="fighter" data-slot="1">
             <span class="name">P2</span>
             <span class="lives"></span>
+            <span class="percent">0%</span>
             <div class="throw-cooldown" hidden aria-hidden="true" aria-label="Throw cooldown">
               <span class="throw-cooldown-icon" aria-hidden="true">🩴</span>
               <span class="throw-cooldown-ring"></span>
             </div>
-            <span class="percent">0%</span>
           </div>
           <div class="fighter" data-slot="3" hidden>
             <span class="name">P4</span>
             <span class="lives"></span>
+            <span class="percent">0%</span>
             <div class="throw-cooldown" hidden aria-hidden="true" aria-label="Throw cooldown">
               <span class="throw-cooldown-icon" aria-hidden="true">🩴</span>
               <span class="throw-cooldown-ring"></span>
             </div>
-            <span class="percent">0%</span>
           </div>
         </div>
       </div>
@@ -191,16 +191,62 @@
                 <h3>No fighter loaded</h3>
                 <p class="blurb">Play as guest or sign in to load your name, stats, and fighter.</p>
               </div>
-              <div id="player-card-profile" class="player-card-body" hidden>
-                <p class="character-name" id="preview-name">Fighter</p>
-                <p class="player-stats" id="player-stats">Lv 1 · 0W 0L</p>
+              <div id="player-card-profile" class="player-card-body player-card-profile" hidden>
+                <div class="player-card-profile-copy">
+                  <p class="character-name" id="preview-name">Fighter</p>
+                  <p class="player-stats" id="player-stats">Lv 1 · 0W 0L</p>
+                </div>
+                <div class="account-status-wrap">
+                  <button
+                    id="cancel-wait"
+                    type="button"
+                    class="profile-control leave-wait"
+                    title="Cancel"
+                    aria-label="Cancel matchmaking"
+                    hidden
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        fill="currentColor"
+                        d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5v-2h5V5h-5V3zm-1.2 4.2 1.4 1.4-2.4 2.4H18v2h-6.2l2.4 2.4-1.4 1.4L8 12l4.8-4.8zM3 5h7v2H5v10h5v2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    id="account-status"
+                    type="button"
+                    class="profile-control account-status"
+                    aria-expanded="false"
+                    aria-controls="account-status-tip"
+                    data-state="guest"
+                    title="Save status"
+                  >
+                    <svg class="icon-save" viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        fill="currentColor"
+                        d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"
+                      />
+                    </svg>
+                    <svg class="icon-save-off" viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        class="icon-save-off-disk"
+                        fill="currentColor"
+                        d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"
+                      />
+                      <path
+                        class="icon-save-off-x"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.8"
+                        stroke-linecap="round"
+                        d="M7 7l10 10M17 7L7 17"
+                      />
+                    </svg>
+                  </button>
+                  <div id="account-status-tip" class="account-status-tip" hidden role="status"></div>
+                </div>
               </div>
-              <div id="player-card-waiting" class="player-card-body" hidden>
-                <p class="eyebrow">Matchmaking</p>
-                <h3 id="platform-waiting-title">Waiting for opponent</h3>
-                <p id="platform-waiting-blurb" class="blurb">Hold your charge — an opponent will appear on the right.</p>
-                <button id="cancel-wait" class="ghost platform-cancel" type="button">Cancel</button>
-              </div>
+              <div id="player-card-waiting" class="player-card-body" hidden></div>
               <div id="player-card-result" class="player-card-body" hidden>
                 <div class="platform-actions">
                   <button id="again" type="button">Play again</button>
@@ -208,7 +254,17 @@
                 </div>
               </div>
               <div id="player-card-moves" class="player-card-body" hidden>
-                <p class="eyebrow">Try a move</p>
+                <div class="moves-heading">
+                  <p class="eyebrow">Try a move</p>
+                  <button
+                    id="joystick-toggle"
+                    type="button"
+                    class="profile-control"
+                    data-state="shown"
+                    aria-pressed="true"
+                    title="On-screen controls"
+                  ></button>
+                </div>
                 <div class="move-grid">
                   <button type="button" data-demo-move="run">
                     <span class="move-label">Run</span>
@@ -254,16 +310,35 @@
               <h2>Login</h2>
               <p class="blurb">Sign in to keep stats, color, and match results.</p>
               <label>
-                Display name
-                <input id="login-name" maxlength="24" placeholder="For new accounts" autocomplete="nickname" />
-              </label>
-              <label>
                 Email
-                <input id="email" type="email" placeholder="you@example.com" autocomplete="email" />
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  autocomplete="username"
+                  inputmode="email"
+                />
               </label>
               <label>
                 Password
-                <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  placeholder="••••••••"
+                  autocomplete="current-password"
+                />
+              </label>
+              <label>
+                Display name
+                <input
+                  id="login-name"
+                  name="name"
+                  maxlength="24"
+                  placeholder="For new accounts"
+                  autocomplete="name"
+                />
               </label>
               <div class="actions">
                 <button id="sign-in" type="button" data-defer-shatter="true">Sign in</button>
@@ -273,9 +348,7 @@
               <p id="auth-error" class="error" hidden></p>
             </div>
             <div id="pane-menu" class="pane" hidden>
-              <p id="menu-kind" class="eyebrow">Ready</p>
               <h2>Let’s fight</h2>
-              <p id="menu-blurb" class="blurb">Your fighter is loaded. Find a match when you’re ready.</p>
               <p class="stage-heading">Select stage</p>
               <div class="stage-select" role="group" aria-label="Select stage">
                 <button type="button" data-stage="barnyard" data-selected="true">
@@ -303,7 +376,7 @@
               <button id="join" type="button">Find match</button>
               <button id="edit-avatar" class="secondary" type="button">Edit fighter</button>
               <button id="sign-out" class="ghost" type="button">Sign out</button>
-              <p class="hint">A / D move · Space / W jump · S / ↓ drop through · Hold H to slap · Move + double-tap H for run slap combo · Hold J to charge throw</p>
+              <p class="hint">A / D move · Space / W jump · S / ↓ drop through · Tap or hold H to slap · Move + double-tap H for run slap combo · Tap or hold J to throw · Hold J to charge throw</p>
               <p id="menu-error" class="error" hidden></p>
             </div>
             <div id="pane-waiting" class="pane" hidden>
@@ -324,10 +397,9 @@
             <div id="pane-edit" class="pane" hidden>
               <p class="eyebrow">Fighter</p>
               <h2>Edit</h2>
-              <p class="blurb">Change your name, color, and throwable. Use the platform under your fighter to preview moves.</p>
               <label>
                 Display name
-                <input id="display-name" maxlength="24" placeholder="Fighter" autocomplete="nickname" />
+                <input id="display-name" name="name" maxlength="24" placeholder="Fighter" autocomplete="name" />
               </label>
               <p class="stage-heading">Color</p>
               <div id="color-grid" class="color-grid" role="radiogroup" aria-label="Fighter color"></div>

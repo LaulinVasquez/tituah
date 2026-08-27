@@ -138,7 +138,11 @@ export function cancelAttackCharge(player: PlayerState): void {
 export function triggerRunningFourSlap(player: PlayerState, time: number): boolean {
   if (player.lives <= 0) return false;
   cancelAttackCharge(player);
-  if (player.attackState.type === "recovery") {
+  // Allow run-slap to take over a light slap that already started from the first tap.
+  if (
+    player.attackState.type === "recovery"
+    || player.attackState.type === "active"
+  ) {
     player.attackState = { type: "idle" };
   }
   if (player.attackState.type !== "idle") return false;

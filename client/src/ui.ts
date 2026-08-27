@@ -30,6 +30,7 @@ import { STAGE_VISUALS } from "./rendering/stages/stage-config.js";
 import { audio } from "./audio/audio-manager.js";
 import { shatterElement } from "./shatter-pane.js";
 import { prefersNativeTapHandling } from "./config/runtime.js";
+import { createElement, Gamepad2, X } from "lucide";
 
 type LobbyPane = "landing" | "login" | "menu" | "waiting" | "result" | "edit";
 
@@ -43,6 +44,16 @@ const DEMO_MOVES = new Set<LobbyDemoMove>([
   "throw",
 ]);
 
+const JOYSTICK_STORAGE_KEY = "tituah:joystick";
+
+function readJoystickVisible(): boolean {
+  return localStorage.getItem(JOYSTICK_STORAGE_KEY) !== "0";
+}
+
+function writeJoystickVisible(visible: boolean): void {
+  localStorage.setItem(JOYSTICK_STORAGE_KEY, visible ? "1" : "0");
+}
+
 export class Ui {
   readonly overlay = required("#overlay");
   readonly hud = required("#hud");
@@ -54,11 +65,12 @@ export class Ui {
   readonly playerCard = required("#player-card");
   readonly previewName = required("#preview-name");
   readonly playerStats = required("#player-stats");
-  readonly menuKind = required("#menu-kind");
-  readonly menuBlurb = required("#menu-blurb");
+  readonly accountStatus = required("#account-status", HTMLButtonElement);
+  readonly accountStatusTip = required("#account-status-tip");
   readonly editorHint = required("#editor-hint");
   readonly colorGrid = required("#color-grid");
   readonly throwableGrid = required("#throwable-grid");
+  readonly joystickToggle = required("#joystick-toggle", HTMLButtonElement);
   readonly editButton = required("#edit-avatar", HTMLButtonElement);
   readonly saveAvatarButton = required("#save-avatar", HTMLButtonElement);
   readonly displayNameInput = required("#display-name", HTMLInputElement);
@@ -92,6 +104,8 @@ export class Ui {
   private loading = false;
   private editPreviewToken = 0;
   private guestSession = false;
+  private accountEmail: string | null = null;
+  private accountTipOpen = false;
   private selectedColor: FighterColor = "orange";
   private selectedThrowable: ThrowableId = "sandal";
   private onColorSelected: (color: FighterColor) => void = () => undefined;
@@ -137,6 +151,9 @@ export class Ui {
   }
 
   constructor() {
+    if (navigator.maxTouchPoints > 0 || window.matchMedia("(any-pointer: coarse)").matches) {
+      document.documentElement.classList.add("has-touch");
+    }
     const stored = localStorage.getItem("tituah:name");
     if (stored) this.loginNameInput.value = stored;
     for (const button of this.stageButtons) {
@@ -177,6 +194,8 @@ export class Ui {
     this.selectStage(this.selectedStage);
     this.selectPlayerCount(this.selectedPlayerCount);
     this.bindMixer();
+    this.bindJoystickToggle();
+    this.bindAccountStatus();
     if (this.directTapHandling) {
       for (const button of this.playerCard.querySelectorAll<HTMLButtonElement>("[data-demo-move]")) {
         button.addEventListener("click", () => {
@@ -205,6 +224,9 @@ export class Ui {
           // Color / throwable swatches handle their own in-place jump.
           if (button.classList.contains("color-swatch")) return;
           if (button.classList.contains("throwable-swatch")) return;
+          if (button.id === "joystick-toggle") return;
+          if (button.id === "account-status") return;
+          if (button.id === "cancel-wait") return;
           const demo = button.dataset.demoMove;
           if (demo && isDemoMove(demo)) {
             event.preventDefault();
@@ -231,6 +253,10 @@ export class Ui {
             return;
           }
           if (button.id === "edit-avatar" || button.id === "again" || button.id === "result-back") {
+            void this.slapThen(button, replay, false);
+            return;
+          }
+          if (button.id === "save-avatar" || button.id === "back-edit") {
             void this.slapThen(button, replay, false);
             return;
           }
@@ -325,18 +351,28 @@ export class Ui {
     this.emailInput.focus();
   }
 
-  showMenu(profile?: UserProfile | null, error?: string, guestSession = this.guestSession): void {
+  showMenu(
+    profile?: UserProfile | null,
+    error?: string,
+    guestSession = this.guestSession,
+    accountEmail = this.accountEmail,
+  ): void {
     this.setSeeking(false);
     this.setMatchmakingMode(false);
     this.fighter?.clearRoster();
     this.setOverlay(true);
     this.hud.hidden = true;
-    this.setPreview(profile ?? this.profile, guestSession);
+    this.setPreview(profile ?? this.profile, guestSession, accountEmail);
     this.setPane("menu");
     this.setPaneError(error);
   }
 
-  showEditor(profile: UserProfile | null, error?: string): void {
+  showEditor(
+    profile: UserProfile | null,
+    error?: string,
+    guestSession = this.guestSession,
+    accountEmail = this.accountEmail,
+  ): void {
     this.setSeeking(false);
     this.setMatchmakingMode(false);
     this.fighter?.clearRoster();
@@ -344,14 +380,13 @@ export class Ui {
     if (this.pane !== "edit") this.paneBeforeEdit = this.pane;
     this.selectedColor = fighterColorFromId(profile?.avatar.baseAvatarId);
     this.selectedThrowable = throwableIdFromAvatar(profile?.avatar.throwableId);
-    this.setPreview(profile, this.guestSession);
+    this.setPreview(profile, guestSession, accountEmail);
     this.displayNameInput.value = profile?.displayName ?? "";
     this.setPane("edit");
     this.renderColorPicker(profile);
     this.renderThrowablePicker(profile);
     this.setError(this.editError, error);
     this.setActiveMove("idle");
-    this.displayNameInput.focus();
   }
 
   fighterColor(): FighterColor {
@@ -367,12 +402,16 @@ export class Ui {
     this.setActiveMove("idle");
     // Prefer Let's fight whenever a fighter is loaded.
     if (this.profile) {
-      this.showMenu(this.profile);
+      this.showMenu(this.profile, undefined, this.guestSession, this.accountEmail);
+      return;
+    }
+    // Guest / lobby edit: never dump to the signed-out landing screen.
+    if (this.guestSession || this.paneBeforeEdit === "menu") {
+      this.showMenu(this.profile, undefined, this.guestSession, this.accountEmail);
       return;
     }
     const previous = this.paneBeforeEdit;
-    if (previous === "menu") this.showMenu(this.profile);
-    else if (previous === "login") this.showLogin();
+    if (previous === "login") this.showLogin();
     else this.showAuth();
   }
 
@@ -389,13 +428,6 @@ export class Ui {
     required("#waiting-countdown").hidden = true;
     const waitingLabel = maxPlayers === 2 ? "Waiting for opponent" : "Waiting for players";
     required("#waiting-title").textContent = waitingLabel;
-    required("#platform-waiting-title").textContent = waitingLabel;
-    required("#platform-waiting-blurb").textContent =
-      maxPlayers === 2
-        ? slot === 1
-          ? "You’re Player 2 — hold while the roster locks in."
-          : "Hold your charge — an opponent will appear on the right."
-        : `Hold your charge — ${maxPlayers - 1} more fighter${maxPlayers > 2 ? "s" : ""} can join this room.`;
     this.setPane("waiting");
     if (this.profile) {
       const spawnIndex = slot ?? 0;
@@ -412,6 +444,7 @@ export class Ui {
         attackState: { type: "idle" },
         throwCooldownEndsAt: 0,
         throwAnimUntil: 0,
+        throwChargeStartedAt: 0,
         lives: 1,
         lastInputSeq: 0,
         spawnIndex,
@@ -455,10 +488,6 @@ export class Ui {
     required("#waiting-countdown").hidden = true;
     required("#countdown-banner").hidden = true;
     required("#waiting-title").textContent = full ? "Match found" : `Waiting for players (${players.length}/${maxPlayers})`;
-    required("#platform-waiting-title").textContent = full ? "Match found" : "Waiting for players";
-    required("#platform-waiting-blurb").textContent = full
-      ? "Everyone’s here — countdown starting."
-      : `${players.length} of ${maxPlayers} fighters ready.`;
     this.syncVersusRoster(players, maxPlayers);
     this.setPane("waiting");
 
@@ -531,8 +560,6 @@ export class Ui {
     readout.hidden = false;
     readout.textContent = label;
     required("#waiting-title").textContent = "Get ready";
-    required("#platform-waiting-title").textContent = "Get ready";
-    required("#platform-waiting-blurb").textContent = label;
     required("#waiting-solo").hidden = true;
     required("#waiting-versus").hidden = false;
     if (this.pane === "result") {
@@ -580,9 +607,11 @@ export class Ui {
   setPreview(
     profile: UserProfile | null,
     guestSession = this.guestSession,
+    accountEmail = this.accountEmail,
   ): void {
     this.profile = profile;
     this.guestSession = Boolean(profile) && guestSession;
+    this.accountEmail = accountEmail?.trim() || null;
     this.fighter?.setAvatar(profile?.avatar ?? null);
     if (!profile) this.fighter?.playMove("idle");
     this.syncPreviewName();
@@ -1069,6 +1098,7 @@ export class Ui {
     this.menuError.hidden = true;
     this.editError.hidden = true;
     if (pane !== "result") this.hideResultBanner();
+    this.setAccountTipOpen(false);
     this.fighter?.setDemoKeyboardEnabled(
       pane === "edit",
       (move) => this.setActiveMove(move),
@@ -1088,28 +1118,69 @@ export class Ui {
     const editing = this.pane === "edit";
     const waiting = this.pane === "waiting";
     const result = this.pane === "result";
-    required("#player-card-locked").hidden = !locked || waiting || result;
-    required("#player-card-profile").hidden = locked || editing || waiting || result;
-    required("#player-card-waiting").hidden = !waiting;
+    const onAuth = this.pane === "landing" || this.pane === "login";
+    // Waiting keeps the profile strip so leave + account status stay available.
+    const showProfile = !locked && !editing && !result && !onAuth;
+    const showLocked = locked && !onAuth && !waiting && !result && !editing;
+    required("#player-card-locked").hidden = !showLocked;
+    // Edit keeps only "Try a move" + controls toggle — never name/stats/save status.
+    required("#player-card-profile").hidden = !showProfile;
+    required("#player-card-waiting").hidden = true;
     required("#player-card-result").hidden = !result;
     required("#player-card-moves").hidden = !editing;
-    this.playerCard.classList.toggle("is-locked", locked && !waiting && !result);
+    this.cancelWaitButton.hidden = !waiting || !showProfile;
+    this.playerCard.classList.toggle("is-locked", showLocked);
+    this.playerCard.classList.toggle("is-bare", onAuth);
     this.playerCard.classList.toggle("is-moves", editing);
     this.playerCard.classList.toggle("is-waiting", waiting);
     this.playerCard.classList.toggle("is-result", result);
-    this.lobby.classList.toggle("is-signed-out", locked);
-    if (!this.profile) {
-      this.menuKind.textContent = "Ready";
-      this.menuBlurb.textContent = "Your fighter is loaded. Find a match when you’re ready.";
+    if (editing) {
+      required("#player-card-profile").hidden = true;
+      required("#player-card-locked").hidden = true;
+    }
+    this.lobby.classList.toggle("is-signed-out", locked || onAuth);
+    this.syncPreviewControls();
+    if (!showProfile) {
+      this.setAccountTipOpen(false);
       return;
     }
-    this.playerStats.textContent = this.guestSession
-      ? `Guest · Lv ${this.profile.progression.level} · ${this.profile.stats.wins}W ${this.profile.stats.losses}L`
-      : `Lv ${this.profile.progression.level} · ${this.profile.stats.wins}W ${this.profile.stats.losses}L`;
-    this.menuKind.textContent = this.guestSession ? "Guest" : "Account";
-    this.menuBlurb.textContent = this.guestSession
-      ? "You’re playing as a guest. Sign in later if you want this record on an account."
-      : "Your name, stats, and color are saved to this account.";
+    this.playerStats.textContent =
+      `Lv ${this.profile!.progression.level} · ${this.profile!.stats.wins}W ${this.profile!.stats.losses}L`;
+    this.syncAccountStatus();
+  }
+
+  private bindAccountStatus(): void {
+    this.accountStatus.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.setAccountTipOpen(!this.accountTipOpen);
+    });
+    document.addEventListener("click", (event) => {
+      if (!this.accountTipOpen) return;
+      const target = event.target as Node | null;
+      if (this.accountStatus.contains(target) || this.accountStatusTip.contains(target)) return;
+      this.setAccountTipOpen(false);
+    });
+  }
+
+  private syncAccountStatus(): void {
+    const linked = Boolean(this.profile) && !this.guestSession;
+    this.accountStatus.dataset.state = linked ? "linked" : "guest";
+    this.accountStatus.setAttribute(
+      "aria-label",
+      linked ? "Progress saved" : "Progress not saved",
+    );
+    if (linked) {
+      const email = this.accountEmail || "your account";
+      this.accountStatusTip.textContent = `Progress saved to: ${email}`;
+    } else {
+      this.accountStatusTip.textContent = "Progress not saved: Guest";
+    }
+  }
+
+  private setAccountTipOpen(open: boolean): void {
+    this.accountTipOpen = open;
+    this.accountStatus.setAttribute("aria-expanded", String(open));
+    this.accountStatusTip.hidden = !open;
   }
 
   private syncPreviewName(): void {
@@ -1128,6 +1199,54 @@ export class Ui {
     for (const button of this.playerCard.querySelectorAll<HTMLButtonElement>("[data-demo-move]")) {
       button.classList.toggle("is-active", button.dataset.demoMove === move);
     }
+  }
+
+  private bindJoystickToggle(): void {
+    this.mountJoystickIcons();
+    this.applyJoystickVisible(readJoystickVisible());
+    this.joystickToggle.addEventListener("click", () => {
+      this.applyJoystickVisible(!readJoystickVisible());
+    });
+  }
+
+  private mountJoystickIcons(): void {
+    const iconAttrs = {
+      width: 18,
+      height: 18,
+      "stroke-width": 2,
+      "aria-hidden": "true",
+    } as const;
+    const shown = createElement(Gamepad2, { ...iconAttrs, class: "icon-joystick" });
+    const hidden = document.createElement("span");
+    hidden.className = "icon-joystick-off";
+    hidden.setAttribute("aria-hidden", "true");
+    hidden.append(
+      createElement(Gamepad2, { ...iconAttrs, class: "icon-joystick-off-pad" }),
+      createElement(X, { ...iconAttrs, class: "icon-joystick-off-x" }),
+    );
+    this.joystickToggle.replaceChildren(shown, hidden);
+  }
+
+  private applyJoystickVisible(visible: boolean): void {
+    writeJoystickVisible(visible);
+    this.joystickToggle.dataset.state = visible ? "shown" : "hidden";
+    this.joystickToggle.setAttribute("aria-pressed", String(visible));
+    this.joystickToggle.setAttribute(
+      "aria-label",
+      visible ? "Hide on-screen controls" : "Show on-screen controls",
+    );
+    this.joystickToggle.title = visible ? "Controls shown" : "Controls hidden";
+    this.syncPreviewControls();
+  }
+
+  /** Preview-only: show touch controls while editing so mobile can test before a match. */
+  private syncPreviewControls(): void {
+    const previewOn = this.pane === "edit" && readJoystickVisible();
+    document.documentElement.classList.toggle("preview-controls-on", previewOn);
+    // Match visibility is owned by setOverlay / touch-controls-on — never hide match pads here.
+    if (this.overlay.dataset.hidden === "true") return;
+    const touch = document.getElementById("touch-controls");
+    if (touch) touch.setAttribute("aria-hidden", previewOn ? "false" : "true");
   }
 
   private bindMixer(): void {
@@ -1309,6 +1428,13 @@ export class Ui {
     this.closeMixer();
     this.closeExitConfirm();
     this.overlay.dataset.hidden = visible ? "false" : "true";
+    const inMatch = !visible;
+    document.documentElement.classList.toggle("touch-controls-on", inMatch);
+    const touch = document.getElementById("touch-controls");
+    if (touch) {
+      if (inMatch) touch.setAttribute("aria-hidden", "false");
+      else this.syncPreviewControls();
+    }
     this.fighter?.setActive(visible);
   }
 }

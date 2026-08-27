@@ -1,7 +1,3 @@
-import fighterSheetUrl from "../../../public/assets/characters/character-enhanced.png";
-import runningSheetUrl from "../../../public/assets/characters/running.png";
-import threeSlapsSheetUrl from "../../../public/assets/characters/three-slaps.png";
-import throwSheetUrl from "../../../public/assets/characters/throw.png";
 import { resolveAssetUrl } from "../../config/runtime.js";
 
 export type FighterAnimation =
@@ -125,8 +121,10 @@ export const FIGHTER_ANIMATIONS: Record<FighterAnimation, FighterAnimationDefini
     loop: false,
     frames: [
       { x: 1052, y: 412, width: 153, height: 122 },
-      { x: 1198, y: 411, width: 164, height: 123 },
-      { x: 1359, y: 412, width: 166, height: 122 },
+      // Include the extended-hand tip that used to bleed into frame 3.
+      { x: 1198, y: 411, width: 170, height: 123 },
+      // Master sheet: previous glove tip ends ~1367; cut in the gap at 1368 (was 1359).
+      { x: 1368, y: 412, width: 157, height: 122, offsetX: 5 },
     ],
   },
   runSlapCombo: {
@@ -154,7 +152,6 @@ export const FIGHTER_ANIMATIONS: Record<FighterAnimation, FighterAnimationDefini
       { x: 20, y: 584, width: 137, height: 118 },
       { x: 166, y: 580, width: 135, height: 122 },
       { x: 303, y: 579, width: 112, height: 123 },
-      { x: 407, y: 588, width: 98, height: 114 },
     ],
   },
   ko: {
@@ -168,8 +165,8 @@ export const FIGHTER_ANIMATIONS: Record<FighterAnimation, FighterAnimationDefini
   },
 };
 
-export const FIGHTER_SHEET_URL = resolveAssetUrl(fighterSheetUrl);
-export const RUNNING_SHEET_URL = resolveAssetUrl(runningSheetUrl);
-export const THREE_SLAPS_SHEET_URL = resolveAssetUrl(threeSlapsSheetUrl);
-export const THROW_SHEET_URL = resolveAssetUrl(throwSheetUrl);
+export const FIGHTER_SHEET_URL = resolveAssetUrl("/assets/characters/character-enhanced.png");
+export const RUNNING_SHEET_URL = resolveAssetUrl("/assets/characters/running.png");
+export const THREE_SLAPS_SHEET_URL = resolveAssetUrl("/assets/characters/three-slaps.png");
+export const THROW_SHEET_URL = resolveAssetUrl("/assets/characters/throw.png");
 export const FIGHTER_VISUAL_HEIGHT = 106;

@@ -1,5 +1,10 @@
 import { Assets, ColorMatrixFilter, Container, Rectangle, Sprite, Texture } from "pixi.js";
-import { throwableIdFromAvatar, type PlayerState, type ThrowableId } from "@tituah/shared";
+import {
+  isThrowCharging,
+  throwableIdFromAvatar,
+  type PlayerState,
+  type ThrowableId,
+} from "@tituah/shared";
 import { appearanceFromAvatar, appearanceKey, colorHue, type FighterAppearance } from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
@@ -12,6 +17,8 @@ import {
   type FighterFrame,
 } from "./fighter-atlas.js";
 import {
+  SLAP_CHARGE_HAND_ANCHORS,
+  THROWABLE_CHARGE_OVERLAY_SCALE,
   THROWABLE_OVERLAY_SCALE,
   THROW_HAND_ANCHORS,
   loadThrowableTextures,
@@ -85,6 +92,8 @@ export class FighterSprite extends Container {
   private throwAnimKey = 0;
   /** Local playhead end — clip always runs from frame 0 for this duration. */
   private throwPlayEndsAt = 0;
+  /** `throwChargeStartedAt` for the charge pose currently playing. */
+  private throwChargeKey = 0;
 
   constructor(readonly playerId: string) {
     super();
@@ -152,6 +161,7 @@ export class FighterSprite extends Container {
     this.lastActiveSlapStartedAt = -1;
     this.throwAnimKey = 0;
     this.throwPlayEndsAt = 0;
+    this.throwChargeKey = 0;
     this.wasGrounded = true;
     this.animation = "idle";
     this.throwableOverlay.visible = false;
@@ -167,8 +177,13 @@ export class FighterSprite extends Container {
       return;
     }
 
-    const throwing = this.syncThrowRelease(player, time);
-    const next = throwing ? "throw" : this.chooseAnimation(player, time);
+    const chargingThrow = isThrowCharging(player);
+    const throwing = this.syncThrowRelease(player, time, chargingThrow);
+    const next = throwing
+      ? "throw"
+      : chargingThrow
+        ? "slapCharge"
+        : this.chooseAnimation(player, time);
 
     if (player.attackState.type === "combo") {
       this.setAnimation("runSlapCombo", player.attackState.startedAt, true);
@@ -176,11 +191,19 @@ export class FighterSprite extends Container {
       const startedAt = player.attackState.startedAt;
       this.setAnimation("slapAttack", startedAt, startedAt !== this.lastActiveSlapStartedAt);
       this.lastActiveSlapStartedAt = startedAt;
+    } else if (chargingThrow) {
+      this.lastActiveSlapStartedAt = -1;
+      const startedAt = player.throwChargeStartedAt || time;
+      const restart = this.animation !== "slapCharge" || this.throwChargeKey !== startedAt;
+      this.throwChargeKey = startedAt;
+      this.setAnimation("slapCharge", startedAt, restart);
     } else if (throwing) {
       this.lastActiveSlapStartedAt = -1;
+      this.throwChargeKey = 0;
       // Animation start time is owned by syncThrowRelease.
     } else {
       this.lastActiveSlapStartedAt = -1;
+      this.throwChargeKey = 0;
       // Only force-restart when leaving throw; never reset slapCharge every frame.
       this.setAnimation(next, time, this.animation === "throw");
     }
@@ -192,11 +215,11 @@ export class FighterSprite extends Container {
 
     this.syncAppearance(player);
     this.setFrame(frameIndex, frame, scale, player.facing);
-    this.syncThrowableOverlay(frameIndex, scale, player.facing);
+    this.syncThrowableOverlay(frameIndex, scale, player.facing, chargingThrow);
     this.applyHitMotion(time);
     this.zIndex = player.position.y
       + (player.attackState.type === "active" || player.attackState.type === "combo" ? 1_000 : 0)
-      + (throwing ? 1_050 : 0)
+      + (chargingThrow || throwing ? 1_050 : 0)
       + (time < this.hitUntil ? 1_100 : 0);
     this.alpha = player.invulnerableUntil > time && Math.floor(time * 12) % 2 === 0 ? 0.35 : 1;
     this.visible = time >= this.hiddenUntil
@@ -204,8 +227,20 @@ export class FighterSprite extends Container {
     this.wasGrounded = player.grounded;
   }
 
-  /** Plays the 3-frame throw clip once from frame 0, keyed by throwAnimUntil. */
-  private syncThrowRelease(player: PlayerState, time: number): boolean {
+  /**
+   * Charge uses slapCharge separately (see update).
+   * Release plays the 3-frame clip once from frame 0, keyed by throwAnimUntil.
+   */
+  private syncThrowRelease(
+    player: PlayerState,
+    time: number,
+    chargingThrow: boolean,
+  ): boolean {
+    if (chargingThrow) {
+      this.throwPlayEndsAt = 0;
+      return false;
+    }
+
     const until = player.throwAnimUntil ?? 0;
 
     if (until > 0 && until !== this.throwAnimKey) {
@@ -278,14 +313,31 @@ export class FighterSprite extends Container {
     frameIndex: number,
     scale: number,
     facing: 1 | -1,
+    chargingThrow: boolean,
   ): void {
     if (!this.throwableTextures) {
       this.throwableOverlay.visible = false;
       return;
     }
 
-    if (this.animation === "throw" && frameIndex <= 1) {
-      const overlayFrame = frameIndex as ThrowableOverlayFrame;
+    if (chargingThrow && this.animation === "slapCharge") {
+      const crop = throwableCrop(this.throwableId, 0);
+      const hand = SLAP_CHARGE_HAND_ANCHORS[frameIndex] ?? SLAP_CHARGE_HAND_ANCHORS[0]!;
+      const overlayScale = scale * THROWABLE_CHARGE_OVERLAY_SCALE;
+      this.throwableOverlay.texture = this.throwableTextures[this.throwableId][0];
+      this.throwableOverlay.anchor.set(crop.gripX, crop.gripY);
+      this.throwableOverlay.scale.set(overlayScale * facing, overlayScale);
+      this.throwableOverlay.position.set(
+        this.sprite.position.x + hand.offsetX * scale * facing,
+        this.sprite.position.y + hand.offsetY * scale,
+      );
+      this.throwableOverlay.visible = true;
+      return;
+    }
+
+    // Wind-up only — by release the projectile is already in flight.
+    if (this.animation === "throw" && frameIndex === 0) {
+      const overlayFrame = 0 as ThrowableOverlayFrame;
       const crop = throwableCrop(this.throwableId, overlayFrame);
       const hand = THROW_HAND_ANCHORS[overlayFrame];
       const overlayScale = scale * THROWABLE_OVERLAY_SCALE;

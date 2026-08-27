@@ -1,8 +1,4 @@
 import { Assets, Rectangle, Texture } from "pixi.js";
-import batSheetUrl from "../../../public/assets/projectiles/baseball_bat.png";
-import flipflopSheetUrl from "../../../public/assets/projectiles/flipflop.png";
-import panSheetUrl from "../../../public/assets/projectiles/pan.png";
-import stickSheetUrl from "../../../public/assets/projectiles/stick.png";
 import { resolveAssetUrl } from "../../config/runtime.js";
 import { throwableIdFromAvatar, type ThrowableId } from "@tituah/shared";
 
@@ -18,10 +14,10 @@ export const PROJECTILE_FPS = 18;
 export const PROJECTILE_DISPLAY_SCALE = 0.19;
 
 export const PROJECTILE_SHEET_URLS: Record<ThrowableId, string> = {
-  sandal: resolveAssetUrl(flipflopSheetUrl),
-  stick: resolveAssetUrl(stickSheetUrl),
-  pan: resolveAssetUrl(panSheetUrl),
-  bat: resolveAssetUrl(batSheetUrl),
+  sandal: resolveAssetUrl("/assets/projectiles/flipflop.png"),
+  stick: resolveAssetUrl("/assets/projectiles/stick.png"),
+  pan: resolveAssetUrl("/assets/projectiles/pan.png"),
+  bat: resolveAssetUrl("/assets/projectiles/baseball_bat.png"),
 };
 
 /** @deprecated Prefer PROJECTILE_* constants; kept for existing call sites. */

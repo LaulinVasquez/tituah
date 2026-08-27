@@ -1,11 +1,19 @@
 import { Assets, Rectangle, Texture } from "pixi.js";
-import throwablesSheetUrl from "../../../public/assets/characters/throwables.png";
 import { resolveAssetUrl } from "../../config/runtime.js";
 import type { ThrowableId } from "@tituah/shared";
 
-export const THROWABLES_SHEET_URL = resolveAssetUrl(throwablesSheetUrl);
+/** Editor / picker icons (single-item PNGs). */
+export const THROWABLE_ITEM_URLS: Record<ThrowableId, string> = {
+  sandal: resolveAssetUrl("/assets/items/sandal.png"),
+  stick: resolveAssetUrl("/assets/items/stick.png"),
+  pan: resolveAssetUrl("/assets/items/pan.png"),
+  bat: resolveAssetUrl("/assets/items/bat.png"),
+};
 
-/** Overlay shown on throw wind-up (0) and release (1). Follow-through has no overlay. */
+/** Hand-held throw overlay sheet (object × spin frame). */
+export const THROWABLES_SHEET_URL = resolveAssetUrl("/assets/items/throwables.png");
+
+/** Overlay shown on throw wind-up (0). Release/follow-through have no overlay (projectile is in flight). */
 export type ThrowableOverlayFrame = 0 | 1;
 
 export interface ThrowableCrop {
@@ -30,8 +38,20 @@ export const THROW_HAND_ANCHORS: Record<ThrowableOverlayFrame, ThrowHandAnchor> 
   1: { offsetX: 278, offsetY: -271 },
 };
 
+/**
+ * Hand (rear glove) on slap-charge frames — lower on the body, arcing through
+ * the wind-up so the item can lerp between these points.
+ */
+export const SLAP_CHARGE_HAND_ANCHORS: readonly ThrowHandAnchor[] = [
+  { offsetX: -32, offsetY: -56 },
+  { offsetX: -44, offsetY: -48 },
+  { offsetX: -54, offsetY: -58 },
+];
+
 /** Scale throwable art relative to the fighter frame pixel scale. */
 export const THROWABLE_OVERLAY_SCALE = 0.55;
+/** Smaller while held in the slap-charge wind-up hand. */
+export const THROWABLE_CHARGE_OVERLAY_SCALE = 0.28;
 
 const THROWABLE_ROWS: ThrowableId[] = ["sandal", "stick", "pan", "bat"];
 
