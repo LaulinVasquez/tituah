@@ -116,10 +116,22 @@ export class AuthService {
     return this.profile;
   }
 
+  async persistFaceAccessory(faceAccessoryId: string | null): Promise<UserProfile> {
+    if (!this.profile) throw new Error("Not signed in");
+    this.profile = {
+      ...this.profile,
+      avatar: { ...this.profile.avatar, faceAccessoryId },
+    };
+    const saved = await usersRepository.updateSafe({ faceAccessoryId });
+    if (saved) this.profile = saved;
+    return this.profile;
+  }
+
   async saveFighter(data: {
     displayName?: string;
     baseAvatarId?: string;
     throwableId?: string;
+    faceAccessoryId?: string | null;
   }): Promise<UserProfile> {
     const previous = this.profile;
     const saved = await usersRepository.updateSafe(data);

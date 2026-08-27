@@ -12,6 +12,10 @@ import {
   type FighterAppearance,
 } from "./appearance.js";
 import {
+  bakedSheetForFaceAccessory,
+  type BAKED_FACE_ACCESSORY_SHEETS,
+} from "./accessory-sheets.js";
+import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
   FIGHTER_VISUAL_HEIGHT,
@@ -39,9 +43,26 @@ const RESPAWN_HIDE_DURATION = 0.52;
 const THROW_CLIP_DURATION =
   FIGHTER_ANIMATIONS.throw.frames.length / FIGHTER_ANIMATIONS.throw.fps;
 
-let texturePromise: Promise<Record<FighterAnimation, Texture[]>> | null = null;
+type TextureSet = Record<FighterAnimation, Texture[]>;
+type BakedSheet = (typeof BAKED_FACE_ACCESSORY_SHEETS)[string];
 
-function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
+let texturePromise: Promise<TextureSet> | null = null;
+const bakedTextureCache = new Map<string, Promise<Partial<TextureSet>>>();
+
+function sliceSheet(
+  sheet: Texture,
+  frames: readonly FighterFrame[],
+): Texture[] {
+  return frames.map(
+    (frame) =>
+      new Texture({
+        source: sheet.source,
+        frame: new Rectangle(frame.x, frame.y, frame.width, frame.height),
+      }),
+  );
+}
+
+function loadTextures(): Promise<TextureSet> {
   if (texturePromise) return texturePromise;
   texturePromise = Promise.all([
     Assets.load<Texture>(FIGHTER_SHEET_URL),
@@ -49,7 +70,7 @@ function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
     Assets.load<Texture>(THREE_SLAPS_SHEET_URL),
     Assets.load<Texture>(THROW_SHEET_URL),
   ]).then(([fighterSheet, runningSheet, threeSlapSheet, throwSheet]) => {
-    const result = {} as Record<FighterAnimation, Texture[]>;
+    const result = {} as TextureSet;
     for (const [name, animation] of Object.entries(FIGHTER_ANIMATIONS)) {
       const sheet =
         animation.sheet === "running"
@@ -59,22 +80,34 @@ function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
             : animation.sheet === "throw"
               ? throwSheet
               : fighterSheet;
-      result[name as FighterAnimation] = animation.frames.map(
-        (frame) => new Texture({
-          source: sheet.source,
-          frame: new Rectangle(frame.x, frame.y, frame.width, frame.height),
-        }),
-      );
+      result[name as FighterAnimation] = sliceSheet(sheet, animation.frames);
     }
     return result;
   });
   return texturePromise;
 }
 
+function loadBakedAccessoryTextures(baked: BakedSheet): Promise<Partial<TextureSet>> {
+  const cached = bakedTextureCache.get(baked.url);
+  if (cached) return cached;
+  const promise = Assets.load<Texture>(baked.url).then((sheet) => {
+    const result: Partial<TextureSet> = {};
+    for (const [name, frames] of Object.entries(baked.frames)) {
+      if (!frames) continue;
+      result[name as FighterAnimation] = sliceSheet(sheet, frames);
+    }
+    return result;
+  });
+  bakedTextureCache.set(baked.url, promise);
+  return promise;
+}
+
 export class FighterSprite extends Container {
   private readonly sprite = new Sprite();
   private readonly throwableOverlay = new Sprite();
-  private textures!: Record<FighterAnimation, Texture[]>;
+  private baseTextures!: TextureSet;
+  private textures!: TextureSet;
+  private bakedFrames: Partial<Record<FighterAnimation, readonly FighterFrame[]>> | null = null;
   private throwableTextures: Record<ThrowableId, Texture[]> | null = null;
   private animation: FighterAnimation = "idle";
   private animationStartedAt = 0;
@@ -113,6 +146,7 @@ export class FighterSprite extends Container {
 
   async load(): Promise<void> {
     const [textures, throwables] = await Promise.all([loadTextures(), loadThrowableTextures()]);
+    this.baseTextures = textures;
     this.textures = textures;
     this.throwableTextures = throwables;
     this.sprite.texture = this.textures.idle[0];
@@ -213,12 +247,12 @@ export class FighterSprite extends Container {
       this.setAnimation(next, time, this.animation === "throw");
     }
 
+    this.syncAppearance(player);
     const frameIndex = this.frameIndex(time);
-    const definition = FIGHTER_ANIMATIONS[this.animation];
-    const frame = definition.frames[frameIndex] ?? definition.frames[0];
+    const frames = this.activeFrames(this.animation);
+    const frame = frames[frameIndex] ?? frames[0]!;
     const scale = FIGHTER_VISUAL_HEIGHT / frame.height;
 
-    this.syncAppearance(player);
     this.setFrame(frameIndex, frame, scale, player.facing);
     this.syncThrowableOverlay(frameIndex, scale, player.facing, chargingThrow);
     this.applyHitMotion(time);
@@ -292,12 +326,17 @@ export class FighterSprite extends Container {
     this.lastFrameIndex = -1;
   }
 
+  private activeFrames(animation: FighterAnimation): readonly FighterFrame[] {
+    return this.bakedFrames?.[animation] ?? FIGHTER_ANIMATIONS[animation].frames;
+  }
+
   private frameIndex(time: number): number {
     const definition = FIGHTER_ANIMATIONS[this.animation];
+    const frameCount = this.activeFrames(this.animation).length;
     const elapsedFrames = Math.max(0, Math.floor((time - this.animationStartedAt) * definition.fps));
     return definition.loop
-      ? elapsedFrames % definition.frames.length
-      : Math.min(elapsedFrames, definition.frames.length - 1);
+      ? elapsedFrames % frameCount
+      : Math.min(elapsedFrames, frameCount - 1);
   }
 
   private setFrame(index: number, frame: FighterFrame, scale: number, facing: 1 | -1): void {
@@ -366,6 +405,26 @@ export class FighterSprite extends Container {
     this.appearanceCacheKey = key;
     this.appearance = appearanceFromAvatar(player.avatar);
     this.throwableId = throwableIdFromAvatar(player.avatar?.throwableId);
+    this.lastFrameIndex = -1;
+    this.lastFrameAnimation = null;
+    void this.applyBakedAccessorySheet(this.appearance.faceAccessoryId);
+  }
+
+  private async applyBakedAccessorySheet(faceAccessoryId: string | null): Promise<void> {
+    const baked = bakedSheetForFaceAccessory(faceAccessoryId);
+    if (!baked) {
+      this.textures = this.baseTextures;
+      this.bakedFrames = null;
+      this.lastFrameIndex = -1;
+      this.lastFrameAnimation = null;
+      return;
+    }
+    const requestKey = this.appearanceCacheKey;
+    const overrides = await loadBakedAccessoryTextures(baked);
+    // Drop stale loads if the player swapped accessories while waiting.
+    if (requestKey !== this.appearanceCacheKey) return;
+    this.textures = { ...this.baseTextures, ...overrides } as TextureSet;
+    this.bakedFrames = baked.frames;
     this.lastFrameIndex = -1;
     this.lastFrameAnimation = null;
   }

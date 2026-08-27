@@ -1007,40 +1007,52 @@ button.account-status[aria-expanded="true"] {
   margin: 0 0 16px;
 }
 
-.color-grid.egg-shelf {
+.egg-shelf {
   display: block;
   position: relative;
   width: 100%;
-  aspect-ratio: 1254 / 620;
+  aspect-ratio: 1;
   margin: 4px 0 18px;
   padding: 0;
   border-radius: 12px;
-  background: url("/assets/characters/eggshelve/eggshelve-tray.png") center / contain no-repeat;
+  background: url("/assets/characters/eggshelve/eggshelve.png") center / contain no-repeat;
   background-color: transparent;
   overflow: visible;
 }
 
+.egg-shelf .egg-colors {
+  position: absolute;
+  inset: 0;
+  display: block;
+  margin: 0;
+  pointer-events: none;
+}
+
+.egg-shelf .egg-colors .color-swatch {
+  pointer-events: auto;
+}
+
 /* Middle divider: in front of back-row eggs, behind front-row eggs */
-.color-grid.egg-shelf::before {
+.egg-shelf::before {
   content: "";
   position: absolute;
   left: 1.003%;
-  top: 9%;
+  top: 44.322%;
   width: 97.036%;
-  height: 64.911%;
+  height: 32.093%;
   background: url("/assets/characters/eggshelve/eggshelve-tray-backrow_overlay.png") center / 100% 100% no-repeat;
   pointer-events: none;
   z-index: 2;
 }
 
 /* Front lip in front of variants so eggs read as inside the cups */
-.color-grid.egg-shelf::after {
+.egg-shelf::after {
   content: "";
   position: absolute;
   left: 0.04%;
-  top: 24.24%;
+  top: 51.857%;
   width: 99.64%;
-  height: 67.17%;
+  height: 33.21%;
   background: url("/assets/characters/eggshelve/eggshelve-tray_front_overlay.png") center / 100% 100% no-repeat;
   pointer-events: none;
   z-index: 4;
@@ -1058,7 +1070,7 @@ button.account-status[aria-expanded="true"] {
 }
 
 .egg-shelf .color-swatch {
-  /* variants.png cell ≈ 279×471 — keep natural tall proportions */
+  /* Full sprite visual; clicks only register on the egg-body hit target */
   --egg-w: 16%;
   --egg-anchor: -72%;
   position: absolute;
@@ -1073,6 +1085,8 @@ button.account-status[aria-expanded="true"] {
   border-radius: 0;
   background: transparent;
   color: transparent;
+  overflow: visible;
+  pointer-events: none;
   transform: translate(-50%, var(--egg-anchor));
   transition: transform 0.16s ease, filter 0.16s ease;
   z-index: 1;
@@ -1081,6 +1095,18 @@ button.account-status[aria-expanded="true"] {
 .egg-shelf .color-swatch:nth-child(n + 7) {
   --egg-w: 18.5%;
   z-index: 3;
+}
+
+/* Tight hit box around the egg body (not head/feet empty space) */
+.egg-shelf .color-swatch::after {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 14%;
+  height: 52%;
+  border-radius: 50% / 58%;
+  pointer-events: auto;
 }
 
 .color-swatch-icon {
@@ -1136,6 +1162,136 @@ button.account-status[aria-expanded="true"] {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin: 0 0 16px;
+}
+
+.egg-shelf .egg-face-accessories {
+  /* Between throwables (lid) and egg cups */
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: 16%;
+  height: 9%;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  pointer-events: auto;
+}
+
+.egg-shelf .face-swatch {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+
+.egg-shelf .face-swatch-icon {
+  width: min(100%, 96px);
+  height: min(100%, 56px);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+  transition: filter 0.16s ease, transform 0.16s ease;
+}
+
+.egg-shelf .face-swatch[data-face="sunglasses_01"] .face-swatch-icon {
+  /* Sunglasses from character-enhanced.png ACCESSORIES row @ 781,928 101×49 */
+  background-image: url("/assets/characters/character-enhanced.png");
+  background-size: 1520.79% 2089.8%;
+  background-position: 54.43% 95.18%;
+}
+
+.egg-shelf .face-swatch:hover .face-swatch-icon,
+.egg-shelf .face-swatch:focus-visible .face-swatch-icon {
+  transform: scale(1.08);
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)) brightness(1.08);
+}
+
+.egg-shelf .face-swatch[data-selected="true"] .face-swatch-icon {
+  transform: scale(1.16);
+  filter:
+    drop-shadow(0 0 8px rgba(255, 236, 170, 0.85))
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45))
+    brightness(1.12);
+}
+
+.egg-shelf .egg-throwables {
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  top: 12%;
+  height: 22%;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  z-index: 5;
+  pointer-events: auto;
+}
+
+.egg-shelf .throwable-swatch {
+  display: grid;
+  place-items: center;
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+
+.egg-shelf .throwable-swatch-icon {
+  width: min(100%, 84px);
+  height: min(100%, 84px);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+  transition: filter 0.16s ease, transform 0.16s ease;
+}
+
+.egg-shelf .throwable-swatch:hover .throwable-swatch-icon,
+.egg-shelf .throwable-swatch:focus-visible .throwable-swatch-icon {
+  transform: scale(1.08);
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)) brightness(1.08);
+}
+
+.egg-shelf .throwable-swatch[data-selected="true"] {
+  outline: none;
+  border: none;
+  background: transparent;
+}
+
+.egg-shelf .throwable-swatch[data-selected="true"] .throwable-swatch-icon {
+  transform: scale(1.16);
+  filter:
+    drop-shadow(0 0 8px rgba(255, 236, 170, 0.85))
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45))
+    brightness(1.12);
+}
+
+.egg-shelf .throwable-swatch[data-selected="true"]:hover .throwable-swatch-icon,
+.egg-shelf .throwable-swatch[data-selected="true"]:focus-visible .throwable-swatch-icon {
+  transform: scale(1.16);
 }
 
 .throwable-swatch {

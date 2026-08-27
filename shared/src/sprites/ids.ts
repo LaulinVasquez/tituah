@@ -35,20 +35,20 @@ export const FIGHTER_COLOR_HEX: Record<FighterColor, string> = {
   black: "#2a2f3a",
 };
 
-/** Cup centers (%) over `eggshelve-tray.png` (2×6, matching `FIGHTER_COLORS`). */
+/** Cup centers (%) over `eggshelve.png` (2×6, matching `FIGHTER_COLORS`). */
 export const FIGHTER_VARIANT_CUPS: ReadonlyArray<{ readonly x: number; readonly y: number }> = [
-  { x: 13, y: 35 },
-  { x: 28.5, y: 35 },
-  { x: 44, y: 35 },
-  { x: 56, y: 35 },
-  { x: 71.5, y: 35 },
-  { x: 87, y: 35 },
-  { x: 11.5, y: 71 },
-  { x: 27.5, y: 71 },
-  { x: 43.5, y: 71 },
-  { x: 56.5, y: 71 },
-  { x: 72.5, y: 71 },
-  { x: 88.5, y: 71 },
+  { x: 13, y: 57.18 },
+  { x: 28.5, y: 57.18 },
+  { x: 44, y: 57.18 },
+  { x: 56, y: 57.18 },
+  { x: 71.5, y: 57.18 },
+  { x: 87, y: 57.18 },
+  { x: 11.5, y: 74.98 },
+  { x: 27.5, y: 74.98 },
+  { x: 43.5, y: 74.98 },
+  { x: 56.5, y: 74.98 },
+  { x: 72.5, y: 74.98 },
+  { x: 88.5, y: 74.98 },
 ];
 
 export function isFighterColor(value: string | null | undefined): value is FighterColor {

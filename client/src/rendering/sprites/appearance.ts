@@ -22,6 +22,8 @@ export interface AccessorySprite {
 export interface FighterAppearance {
   color: FighterColor;
   throwableId: ThrowableId;
+  /** Face slot — when a baked sheet exists, fighter-sprite swaps to it. */
+  faceAccessoryId: string | null;
   accessories: AccessorySprite[];
 }
 
@@ -57,14 +59,17 @@ export function colorVariantStyle(color: FighterColor): ColorVariantStyle {
 }
 
 export function appearanceKey(avatar: AvatarConfiguration | undefined): string {
-  return `${fighterColorFromId(avatar?.baseAvatarId)}:${throwableIdFromAvatar(avatar?.throwableId)}`;
+  const face = avatar?.faceAccessoryId ?? "";
+  return `${fighterColorFromId(avatar?.baseAvatarId)}:${throwableIdFromAvatar(avatar?.throwableId)}:${face}`;
 }
 
 export function appearanceFromAvatar(avatar: AvatarConfiguration | undefined): FighterAppearance {
   const config = avatar ?? emptyAvatar();
+  const faceAccessoryId = config.faceAccessoryId ?? null;
   return {
     color: fighterColorFromId(config.baseAvatarId),
     throwableId: throwableIdFromAvatar(config.throwableId),
+    faceAccessoryId,
     accessories: [],
   };
 }

@@ -413,10 +413,12 @@
                   aria-label="Fighter name"
                 />
               </label>
-              <p class="stage-heading">Color</p>
-              <div id="color-grid" class="color-grid egg-shelf" role="radiogroup" aria-label="Fighter color"></div>
-              <p class="stage-heading">Throwable</p>
-              <div id="throwable-grid" class="throwable-grid" role="radiogroup" aria-label="Throwable"></div>
+              <p class="stage-heading">Loadout</p>
+              <div class="egg-shelf">
+                <div id="face-accessory-grid" class="egg-face-accessories" role="radiogroup" aria-label="Face accessory"></div>
+                <div id="throwable-grid" class="throwable-grid egg-throwables" role="radiogroup" aria-label="Throwable"></div>
+                <div id="color-grid" class="color-grid egg-colors" role="radiogroup" aria-label="Fighter color"></div>
+              </div>
               <p id="editor-hint" class="blurb" hidden></p>
               <p id="edit-error" class="error" hidden></p>
               <button id="save-avatar" type="button">Save</button>

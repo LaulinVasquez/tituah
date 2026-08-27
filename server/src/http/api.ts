@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isFighterColor, isThrowableId, type ItemSlot } from "@tituah/shared";
+import { isFighterColor, isThrowableId, SPRITE_ASSET_IDS, type ItemSlot } from "@tituah/shared";
 import { inventoryRepository } from "../repositories/inventory.repository.js";
 import { itemsRepository } from "../repositories/items.repository.js";
 import {
@@ -78,12 +78,24 @@ export async function handleApiRequest(
       if (requestedThrowable && !isThrowableId(requestedThrowable)) {
         throw new Error("Invalid throwable");
       }
+      const hasFaceAccessory = Object.prototype.hasOwnProperty.call(body, "faceAccessoryId");
+      const requestedFace =
+        hasFaceAccessory && (body as { faceAccessoryId?: unknown }).faceAccessoryId === null
+          ? null
+          : stringField(body, "faceAccessoryId");
+      if (
+        requestedFace != null &&
+        requestedFace !== SPRITE_ASSET_IDS.sunglasses
+      ) {
+        throw new Error("Invalid face accessory");
+      }
       const { usersRepository } = await import("../repositories/users.repository.js");
       await usersRepository.updateSafeProfile(tokenUser.uid, {
         displayName: stringField(body, "displayName") ?? profile.displayName,
         username: stringField(body, "username") ?? profile.username,
         baseAvatarId: requestedColor,
         throwableId: requestedThrowable,
+        ...(hasFaceAccessory ? { faceAccessoryId: requestedFace } : {}),
       });
       json(res, 200, { profile: await getUserProfile(tokenUser.uid) });
       return true;

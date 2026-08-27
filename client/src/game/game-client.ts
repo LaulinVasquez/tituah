@@ -43,6 +43,7 @@ export class GameClient {
   private inRoom = false;
   private colorSave: Promise<void> = Promise.resolve();
   private throwableSave: Promise<void> = Promise.resolve();
+  private faceAccessorySave: Promise<void> = Promise.resolve();
 
   async start(canvas: HTMLCanvasElement): Promise<void> {
     this.input = new InputManager(canvas);
@@ -86,6 +87,7 @@ export class GameClient {
     this.ui.onSaveAvatar(() => void this.saveFighter());
     this.ui.onSelectColor((color) => this.persistColor(color));
     this.ui.onSelectThrowable((throwableId) => this.persistThrowable(throwableId));
+    this.ui.onSelectFaceAccessory((faceAccessoryId) => this.persistFaceAccessory(faceAccessoryId));
     this.ui.onBackFromEdit(() => this.leaveEditor());
 
     authService.start();
@@ -265,6 +267,7 @@ export class GameClient {
     const name = this.ui.displayName("edit");
     const color = this.ui.fighterColor();
     const throwableId = this.ui.fighterThrowable();
+    const faceAccessoryId = this.ui.fighterFaceAccessory();
     this.ui.rememberName(name);
 
     const profile = authService.profile;
@@ -278,6 +281,7 @@ export class GameClient {
       ...profile.avatar,
       baseAvatarId: color,
       throwableId,
+      faceAccessoryId,
     });
 
     // Return to lobby immediately with the optimistic profile so a slow/failed
@@ -287,7 +291,8 @@ export class GameClient {
     try {
       await this.colorSave.catch(() => undefined);
       await this.throwableSave.catch(() => undefined);
-      await authService.saveFighter({ displayName: name, baseAvatarId: color, throwableId });
+      await this.faceAccessorySave.catch(() => undefined);
+      await authService.saveFighter({ displayName: name, baseAvatarId: color, throwableId, faceAccessoryId });
       if (!authService.user) return;
       void this.refreshPreview();
     } catch (error) {
@@ -311,6 +316,15 @@ export class GameClient {
       .catch(() => undefined)
       .then(async () => {
         await authService.persistThrowable(throwableId);
+      });
+  }
+
+  private persistFaceAccessory(faceAccessoryId: string | null): void {
+    if (!authService.profile) return;
+    this.faceAccessorySave = this.faceAccessorySave
+      .catch(() => undefined)
+      .then(async () => {
+        await authService.persistFaceAccessory(faceAccessoryId);
       });
   }
 
