@@ -4,10 +4,10 @@ import {
   THROWABLE_IDS,
   THROWABLE_LABELS,
   emptyAvatar,
-  findActiveFlipflop,
-  flipflopThrowReloadProgress,
+  FLIPFLOP_THROW_ID,
+  getAttack,
+  getThrowCooldownEndsAt,
   fighterColorFromId,
-  getStage,
   isFighterColor,
   isStageId,
   isThrowableId,
@@ -666,23 +666,19 @@ export class Ui {
     const cooldown = slot?.throwCooldown;
     if (!cooldown) return;
 
-    const projectiles = state.snapshot?.projectiles ?? [];
-    const activeFlipflop = findActiveFlipflop(projectiles, localId);
-    const locked = activeFlipflop != null || local.throwCooldownEndsAt > time;
-
-    if (!locked) {
+    const endsAt = getThrowCooldownEndsAt(local);
+    const remaining = endsAt - time;
+    if (remaining <= 0) {
       cooldown.hidden = true;
       cooldown.style.removeProperty("--progress");
       return;
     }
 
-    const blast = getStage(state.snapshot?.stageId ?? "barnyard").blast;
-    const progress = activeFlipflop
-      ? flipflopThrowReloadProgress(activeFlipflop, blast)
-      : 1;
+    const duration = Math.max(0.001, getAttack(FLIPFLOP_THROW_ID).cooldown);
+    const progress = 1 - Math.min(1, remaining / duration);
 
     cooldown.hidden = false;
-    cooldown.style.setProperty("--progress", String(Math.min(1, progress)));
+    cooldown.style.setProperty("--progress", String(progress));
     cooldown.setAttribute("aria-valuenow", String(Math.round(progress * 100)));
   }
 

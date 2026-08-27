@@ -53,7 +53,8 @@ export const FLIPFLOP_THROW: AttackDefinition = {
   baseDamage: 14,
   baseKnockback: 420,
   verticalKnockback: 220,
-  cooldown: 3,
+  /** Short recovery after release — not tied to projectile lifetime. */
+  cooldown: 0.4,
   activeDuration: 0.01,
   hitbox: {
     width: 0,

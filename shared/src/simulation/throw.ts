@@ -4,7 +4,7 @@ import { lerp } from "../math.js";
 import { throwableIdFromAvatar } from "../sprites/ids.js";
 import type { PlayerInput, PlayerState, Projectile } from "../types.js";
 import { cancelAttackCharge, getCharge } from "./combat.js";
-import { createProjectile, playerHasActiveFlipflop } from "./projectiles.js";
+import { createProjectile } from "./projectiles.js";
 
 const THROW_SPAWN_Y = -PLAYER_HEIGHT * 0.55;
 const THROW_ARC = -0.22;
@@ -13,14 +13,20 @@ export const THROW_SPAWN_X = 64;
 /** Matches client throw sheet: 3 frames @ 10 fps — pose only, not projectile flight. */
 export const THROW_ANIM_DURATION = 3 / 10;
 
+export function getThrowCooldownEndsAt(player: PlayerState): number {
+  const endsAt = player.throwCooldownEndsAt;
+  return Number.isFinite(endsAt) ? endsAt : 0;
+}
+
 export function canThrow(
   player: PlayerState,
   time: number,
-  projectiles: readonly Projectile[] = [],
+  _projectiles: readonly Projectile[] = [],
 ): boolean {
   if (player.lives <= 0) return false;
-  if (playerHasActiveFlipflop(projectiles, player.id)) return false;
-  return time >= player.throwCooldownEndsAt;
+  // Finite cooldown only — never gate on an in-flight projectile (Infinity used to
+  // serialize as null over the wire and permanently block throws on the server).
+  return time >= getThrowCooldownEndsAt(player);
 }
 
 export function isThrowCharging(player: PlayerState): boolean {
@@ -61,7 +67,7 @@ export function throwFlipflop(
 ): Projectile | null {
   const charging = isThrowCharging(player);
   if (charging) {
-    if (player.lives <= 0 || playerHasActiveFlipflop(projectiles, player.id)) {
+    if (player.lives <= 0) {
       cancelThrowCharge(player);
       return null;
     }
@@ -78,7 +84,7 @@ export function throwFlipflop(
   const speed = lerp(projectileDef.speed, projectileDef.maxSpeed ?? projectileDef.speed, t);
 
   cancelThrowCharge(player);
-  player.throwCooldownEndsAt = Number.POSITIVE_INFINITY;
+  player.throwCooldownEndsAt = time + (attack.cooldown ?? 0);
   player.throwAnimUntil = time + THROW_ANIM_DURATION;
 
   return createProjectile({
@@ -126,11 +132,12 @@ export function syncThrowFromInput(
   time: number,
   projectiles: Projectile[] = [],
 ): Projectile | null {
-  if (input.throwHeld && !previousInput.throwHeld) {
+  // Hold = charge whenever ready (rising edge alone misses cooldown expiry mid-hold).
+  if (input.throwHeld) {
     startThrowCharge(player, time, projectiles);
   }
   let spawned: Projectile | null = null;
-  if (!input.throwHeld && previousInput.throwHeld) {
+  if (!input.throwHeld && (previousInput.throwHeld || isThrowCharging(player))) {
     spawned = throwFlipflop(player, time, input.aimAngle, projectiles);
     if (!spawned) cancelThrowCharge(player);
   }

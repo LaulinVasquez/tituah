@@ -22,8 +22,8 @@ export class SfxDirector {
     audio.stop("slapCharge");
   }
 
-  observe(player: PlayerState): void {
-    const next = snapshot(player);
+  observe(player: PlayerState, time = 0): void {
+    const next = snapshot(player, time);
     const prev = this.previous;
     this.previous = next;
     if (!prev) return;
@@ -50,12 +50,12 @@ export class SfxDirector {
     }
 
     if (prev.attack === "charging" && next.attack === "active") audio.play("slapSwing");
-    if (prev.throwCharging && next.throwAnim) audio.play("slapSwing");
-    // Instant throw (no charge window) still needs the release swing.
-    if (!prev.throwCharging && !prev.throwAnim && next.throwAnim) audio.play("slapSwing");
+    // Edge only: throwAnim was previously level-checked, so after the first throw
+    // (throwAnimUntil > 0 forever) every charge frame re-fired slapSwing.
+    if (!prev.throwAnim && next.throwAnim) audio.play("slapSwing");
 
     if (next.running) audio.playLoop("run");
-    else audio.stop("run");
+    else if (prev.running) audio.stop("run");
   }
 
   hit(charge: number): void {
@@ -80,13 +80,13 @@ export class SfxDirector {
   }
 }
 
-function snapshot(player: PlayerState): TrackedPlayer {
+function snapshot(player: PlayerState, time: number): TrackedPlayer {
   return {
     grounded: player.grounded,
     jumpsRemaining: player.jumpsRemaining,
     attack: player.attackState.type,
     throwCharging: isThrowCharging(player),
-    throwAnim: (player.throwAnimUntil ?? 0) > 0,
+    throwAnim: (player.throwAnimUntil ?? 0) > time,
     velocityY: player.velocity.y,
     running: player.grounded && Math.abs(player.velocity.x) >= RUN_SPEED,
   };

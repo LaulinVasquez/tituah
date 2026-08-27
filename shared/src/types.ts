@@ -220,6 +220,10 @@ export function clonePlayerState(player: PlayerState): PlayerState {
     attackState: cloneAttackState(player.attackState),
     throwAnimUntil: player.throwAnimUntil ?? 0,
     throwChargeStartedAt: player.throwChargeStartedAt ?? 0,
+    // JSON.stringify(Infinity) → null; treat non-finite as ready.
+    throwCooldownEndsAt: Number.isFinite(player.throwCooldownEndsAt)
+      ? player.throwCooldownEndsAt
+      : 0,
     avatar: { ...emptyAvatar(), ...(player.avatar ?? {}) },
   };
 }

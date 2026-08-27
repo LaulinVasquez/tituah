@@ -492,7 +492,7 @@ export class GameClient {
       throwFlipflop(predicted, this.localTime, input.aimAngle, projectiles);
     }
     this.state.predicted = predicted;
-    sfx.observe(predicted);
+    sfx.observe(predicted, this.localTime);
   }
 
   private draw(): void {
