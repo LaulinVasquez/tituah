@@ -11,6 +11,8 @@ import {
   getBodyAABB,
   getMeleeHitbox,
   isInBlastZone,
+  isProjectileInBlastZone,
+  FLIPFLOP_THROW_ID,
   PLAYER_LIVES,
   PLAYER_MAX_HEALTH,
   MAX_JUMPS,
@@ -21,6 +23,15 @@ import {
   startAttack as beginAttack,
   releaseAttack as finishAttack,
   syncAttackFromInput,
+  syncThrowFromInput,
+  triggerRunningFourSlap,
+  comboHitTime,
+  RUN_SLAP_HIT_COUNT,
+  RUN_SLAP_COMBO_CHARGE,
+  throwFlipflop,
+  startThrowCharge,
+  updateThrowCharge,
+  cancelThrowCharge,
   TICK_DT,
   updateAttackState,
   updateProjectiles,
@@ -59,6 +70,7 @@ interface ActiveHitbox {
   charge: number;
   endsAt: number;
   hitPlayerIds: Set<string>;
+  comboHitIndex?: number;
 }
 
 export class Match {
@@ -80,6 +92,10 @@ export class Match {
   private readonly previousInputs = new Map<string, PlayerInput>();
   private readonly pendingAttackStarts = new Set<string>();
   private readonly pendingAttackReleases = new Set<string>();
+  private readonly pendingThrowStarts = new Set<string>();
+  private readonly pendingThrowReleases = new Set<string>();
+  private readonly pendingThrows = new Set<string>();
+  private readonly pendingRunningFourSlaps = new Set<string>();
   private readonly activeHitboxes: ActiveHitbox[] = [];
   private readonly combat = new Map<string, CombatStats>();
   private readonly readyPlayerIds = new Set<string>();
@@ -124,6 +140,9 @@ export class Match {
       health: PLAYER_MAX_HEALTH,
       damagePercent: 0,
       attackState: { type: "idle" },
+      throwCooldownEndsAt: 0,
+      throwAnimUntil: 0,
+      throwChargeStartedAt: 0,
       lives: PLAYER_LIVES,
       lastInputSeq: 0,
       spawnIndex,
@@ -225,6 +244,22 @@ export class Match {
     this.pendingAttackReleases.add(playerId);
   }
 
+  throwStart(playerId: string): void {
+    this.pendingThrowStarts.add(playerId);
+  }
+
+  throwRelease(playerId: string): void {
+    this.pendingThrowReleases.add(playerId);
+  }
+
+  throw(playerId: string): void {
+    this.pendingThrows.add(playerId);
+  }
+
+  runningFourSlap(playerId: string): void {
+    this.pendingRunningFourSlaps.add(playerId);
+  }
+
   beginCountdown(): void {
     if (this.status !== "waiting" || this.players.size < this.maxPlayers) return;
     this.status = "countdown";
@@ -316,15 +351,22 @@ export class Match {
 
     for (const player of this.players.values()) {
       updateAttackState(player, this.time);
+      const autoThrow = updateThrowCharge(player, this.time, this.projectiles);
+      if (autoThrow) this.projectiles.push(autoThrow);
       if (player.attackState.type === "active") {
         this.ensureActiveHitbox(player);
+      }
+      if (player.attackState.type === "combo") {
+        this.ensureComboHitboxes(player);
       }
     }
 
     for (let i = this.activeHitboxes.length - 1; i >= 0; i -= 1) {
       const hitbox = this.activeHitboxes[i];
       const owner = this.players.get(hitbox.ownerId);
-      if (!owner || owner.attackState.type !== "active" || this.time >= hitbox.endsAt) {
+      const attacking =
+        owner?.attackState.type === "active" || owner?.attackState.type === "combo";
+      if (!owner || !attacking || this.time >= hitbox.endsAt) {
         this.activeHitboxes.splice(i, 1);
         continue;
       }
@@ -360,9 +402,29 @@ export class Match {
   }
 
   updateProjectiles(dt: number): void {
-    const alive = updateProjectiles(this.projectiles, dt);
+    const ownersBefore = new Set(
+      this.projectiles
+        .filter((projectile) => projectile.attackId === FLIPFLOP_THROW_ID)
+        .map((projectile) => projectile.ownerId),
+    );
+
+    const moved = updateProjectiles(this.projectiles, dt);
+    const inBlast = moved.filter((projectile) => isProjectileInBlastZone(projectile, this.map.blast));
+    const resolved = resolveProjectileHits(inBlast, [...this.players.values()]);
+
+    const ownersAfter = new Set(
+      resolved.remaining
+        .filter((projectile) => projectile.attackId === FLIPFLOP_THROW_ID)
+        .map((projectile) => projectile.ownerId),
+    );
+
+    for (const ownerId of ownersBefore) {
+      if (ownersAfter.has(ownerId)) continue;
+      const player = this.players.get(ownerId);
+      if (player) player.throwCooldownEndsAt = this.time;
+    }
+
     this.projectiles.length = 0;
-    const resolved = resolveProjectileHits(alive, [...this.players.values()]);
     this.projectiles.push(...resolved.remaining);
     for (const hit of resolved.hits) {
       this.recordDamage(hit.attackerId, hit.targetId, hit.damage);
@@ -423,6 +485,13 @@ export class Match {
     input: PlayerInput,
     previous: PlayerInput,
   ): void {
+    if (input.runningSlap) {
+      triggerRunningFourSlap(player, this.time);
+    }
+    if (this.pendingRunningFourSlaps.has(player.id)) {
+      triggerRunningFourSlap(player, this.time);
+      this.pendingRunningFourSlaps.delete(player.id);
+    }
     if (this.pendingAttackStarts.has(player.id)) {
       beginAttack(player, this.time, PRIMARY_ATTACK_ID);
       this.pendingAttackStarts.delete(player.id);
@@ -431,7 +500,26 @@ export class Match {
       finishAttack(player, this.time);
       this.pendingAttackReleases.delete(player.id);
     }
+    if (this.pendingThrowStarts.has(player.id)) {
+      startThrowCharge(player, this.time, this.projectiles);
+      this.pendingThrowStarts.delete(player.id);
+    }
+    if (this.pendingThrowReleases.has(player.id)) {
+      const projectile = throwFlipflop(player, this.time, input.aimAngle, this.projectiles);
+      if (projectile) this.projectiles.push(projectile);
+      else cancelThrowCharge(player);
+      this.pendingThrowReleases.delete(player.id);
+    }
+    if (this.pendingThrows.has(player.id)) {
+      // Legacy instant throw → base power.
+      cancelThrowCharge(player);
+      const projectile = throwFlipflop(player, this.time, input.aimAngle, this.projectiles, 0);
+      if (projectile) this.projectiles.push(projectile);
+      this.pendingThrows.delete(player.id);
+    }
     syncAttackFromInput(player, input, previous, this.time);
+    const thrown = syncThrowFromInput(player, input, previous, this.time, this.projectiles);
+    if (thrown) this.projectiles.push(thrown);
   }
 
   private ensureActiveHitbox(player: PlayerState): void {
@@ -453,6 +541,35 @@ export class Match {
       endsAt: state.startedAt + attack.activeDuration,
       hitPlayerIds: new Set(),
     });
+  }
+
+  private ensureComboHitboxes(player: PlayerState): void {
+    const state = player.attackState;
+    if (state.type !== "combo") return;
+
+    const attack = getAttack(state.attackId);
+    for (let hitIndex = 0; hitIndex < RUN_SLAP_HIT_COUNT; hitIndex += 1) {
+      const hitTime = comboHitTime(state.startedAt, hitIndex);
+      if (this.time < hitTime) continue;
+
+      const exists = this.activeHitboxes.some(
+        (hitbox) =>
+          hitbox.ownerId === player.id
+          && hitbox.attackId === state.attackId
+          && hitbox.comboHitIndex === hitIndex
+          && hitbox.endsAt > this.time,
+      );
+      if (exists) continue;
+
+      this.activeHitboxes.push({
+        ownerId: player.id,
+        attackId: attack.id,
+        charge: RUN_SLAP_COMBO_CHARGE,
+        endsAt: hitTime + attack.activeDuration / RUN_SLAP_HIT_COUNT,
+        hitPlayerIds: new Set(),
+        comboHitIndex: hitIndex,
+      });
+    }
   }
 
   combatResults(): Record<string, MatchPlayerResult> {
@@ -491,6 +608,9 @@ export class Match {
     player.velocity.x = 0;
     player.velocity.y = 0;
     player.attackState = { type: "idle" };
+    player.throwCooldownEndsAt = 0;
+    player.throwAnimUntil = 0;
+    player.throwChargeStartedAt = 0;
     player.jumpsRemaining = MAX_JUMPS;
     player.health = PLAYER_MAX_HEALTH;
 
@@ -513,6 +633,9 @@ export class Match {
     player.damagePercent = 0;
     player.health = PLAYER_MAX_HEALTH;
     player.attackState = { type: "idle" };
+    player.throwCooldownEndsAt = 0;
+    player.throwAnimUntil = 0;
+    player.throwChargeStartedAt = 0;
     player.invulnerableUntil = this.time + RESPAWN_INVULN_TIME;
     this.emit(null, {
       type: "player_respawn",
@@ -533,6 +656,9 @@ export class Match {
       player.health = PLAYER_MAX_HEALTH;
       player.damagePercent = 0;
       player.attackState = { type: "idle" };
+      player.throwCooldownEndsAt = 0;
+      player.throwAnimUntil = 0;
+      player.throwChargeStartedAt = 0;
       player.lives = PLAYER_LIVES;
       player.invulnerableUntil = this.time + 0.4;
     }

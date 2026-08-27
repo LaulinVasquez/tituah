@@ -1,0 +1,21 @@
+/** @deprecated Import from `projectile-atlas.js` instead. */
+export {
+  FLIPFLOP_DISPLAY_SCALE,
+  FLIPFLOP_FPS,
+  FLIPFLOP_FRAME_COLS,
+  FLIPFLOP_FRAME_COUNT,
+  FLIPFLOP_FRAME_HEIGHT,
+  FLIPFLOP_FRAME_ROWS,
+  FLIPFLOP_FRAME_WIDTH,
+  FLIPFLOP_SHEET_HEIGHT,
+  FLIPFLOP_SHEET_URL,
+  FLIPFLOP_SHEET_WIDTH,
+  flipflopPreviewScale,
+  loadFlipflopTextures,
+  loadProjectileTextures,
+  PROJECTILE_DISPLAY_SCALE,
+  PROJECTILE_FPS,
+  PROJECTILE_FRAME_COUNT,
+  projectilePreviewScale,
+  projectileTexturesFor,
+} from "./projectile-atlas.js";

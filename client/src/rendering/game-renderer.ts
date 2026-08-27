@@ -1,6 +1,7 @@
 import { Application, Container, Graphics } from "pixi.js";
-import { GAME_HEIGHT, GAME_WIDTH, type PlayerState } from "@tituah/shared";
+import { GAME_HEIGHT, GAME_WIDTH, type PlayerState, type Projectile } from "@tituah/shared";
 import { PlayerRenderer } from "./player-renderer.js";
+import { ProjectileRenderer } from "./projectile-renderer.js";
 import { pixiOptions } from "./renderer-options.js";
 import { StageRenderer } from "./stages/stage-renderer.js";
 
@@ -13,6 +14,7 @@ export class GameRenderer {
   private readonly impacts = new Graphics();
   private readonly voidEffects = new Graphics();
   private readonly labels = new Container();
+  private projectiles!: ProjectileRenderer;
   private players!: PlayerRenderer;
   private cameraX = GAME_WIDTH / 2;
   private cameraY = GAME_HEIGHT / 2;
@@ -35,6 +37,7 @@ export class GameRenderer {
     canvas.style.width = "100%";
     canvas.style.height = "100%";
     this.app.stage.addChild(this.world);
+    this.gameplay.sortableChildren = true;
     this.gameplay.addChild(
       this.stage.props,
       this.stage.platforms,
@@ -43,6 +46,9 @@ export class GameRenderer {
       this.impacts,
       this.labels,
     );
+    this.projectiles = new ProjectileRenderer();
+    this.projectiles.layer.zIndex = 10_000;
+    this.gameplay.addChild(this.projectiles.layer);
     this.world.addChild(
       this.stage.far,
       this.stage.distant,
@@ -51,7 +57,7 @@ export class GameRenderer {
       this.voidEffects,
     );
     this.players = new PlayerRenderer(this.fighters, this.impacts, this.voidEffects, this.labels);
-    await Promise.all([this.players.load(), this.stage.load()]);
+    await Promise.all([this.players.load(), this.stage.load(), this.projectiles.load()]);
   }
 
   setStage(stageId: string): void {
@@ -76,12 +82,14 @@ export class GameRenderer {
 
   resetForMatch(): void {
     this.players.resetForMatch();
+    this.projectiles.reset();
   }
 
-  render(players: PlayerState[], time: number): void {
+  render(players: PlayerState[], projectiles: Projectile[], time: number): void {
     this.stage.update(players, time);
     this.updateCamera(players);
     this.players.draw(players, time);
+    this.projectiles.draw(projectiles);
     this.app.render();
   }
 

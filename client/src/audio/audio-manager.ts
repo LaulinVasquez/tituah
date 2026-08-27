@@ -44,6 +44,14 @@ function loadMixer(): MixerState {
   };
 }
 
+function createAudioContext(): AudioContext {
+  const AC =
+    window.AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AC) throw new Error("Web Audio API unavailable");
+  return new AC();
+}
+
 export class AudioManager {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -51,9 +59,13 @@ export class AudioManager {
   private sfxGain: GainNode | null = null;
   private sfxBus: BiquadFilterNode | null = null;
   private readonly buffers = new Map<SfxId, AudioBuffer>();
+  /** Raw file bytes fetched before the AudioContext exists (Safari-safe preload). */
+  private readonly pending = new Map<SfxId, ArrayBuffer>();
   private readonly voices = new Map<SfxId, PlayingVoice[]>();
   private mixer = loadMixer();
   private loadPromise: Promise<void> | null = null;
+  private unlockPromise: Promise<void> | null = null;
+  private unlocked = false;
   private readonly listeners = new Set<() => void>();
 
   getMixer(): MixerState {
@@ -120,20 +132,39 @@ export class AudioManager {
     await this.loadPromise;
   }
 
+  /**
+   * Must run inside a user-gesture call stack on Safari/iOS.
+   * Creates (or resumes) the AudioContext, decodes any prefetched bytes, starts music.
+   */
   async unlock(): Promise<void> {
-    const context = this.ensureContext();
-    if (context.state === "suspended") await context.resume().catch(() => undefined);
-    this.startMusic();
+    if (this.unlockPromise) return this.unlockPromise;
+    this.unlockPromise = this.unlockInner();
+    try {
+      await this.unlockPromise;
+    } finally {
+      this.unlockPromise = null;
+    }
   }
 
   play(id: SfxId, options?: { volume?: number; rate?: number; loop?: boolean }): void {
     if (options?.loop && this.isPlaying(id)) return;
 
-    const buffer = this.buffers.get(id);
     const context = this.context;
+    // Safari: voices started while suspended never become audible.
+    if (!this.unlocked || !context || context.state !== "running") {
+      void this.unlock().then(() => {
+        if (!this.unlocked || this.context?.state !== "running") return;
+        // Music is started by unlock itself; only retry other voices.
+        if (id === "music") return;
+        this.play(id, options);
+      });
+      return;
+    }
+
+    const buffer = this.buffers.get(id);
     const musicGain = this.musicGain;
     const sfxGain = this.sfxGain;
-    if (!buffer || !context || !musicGain || !sfxGain || context.state === "closed") return;
+    if (!buffer || !musicGain || !sfxGain) return;
 
     const source = context.createBufferSource();
     const gain = context.createGain();
@@ -192,18 +223,50 @@ export class AudioManager {
     this.voices.delete(id);
   }
 
-  private async loadAll(): Promise<void> {
+  private async unlockInner(): Promise<void> {
+    // Create the context inside the gesture whenever possible (Safari requirement).
     const context = this.ensureContext();
-    await Promise.all(
-      SFX_IDS.map(async (id) => {
-        const buffer = await this.fetchBuffer(context, SFX[id].file);
-        if (buffer) this.buffers.set(id, buffer);
-      }),
-    );
-    if (this.context?.state === "running") this.startMusic();
+    if (context.state !== "running") {
+      await context.resume().catch(() => undefined);
+    }
+    this.unlocked = context.state === "running";
+    await this.load();
+    await this.decodePending();
+    if (this.unlocked) this.startMusic();
   }
 
-  private async fetchBuffer(context: AudioContext, file: string): Promise<AudioBuffer | null> {
+  private async loadAll(): Promise<void> {
+    // Prefetch bytes without creating an AudioContext — Safari blocks contexts
+    // created outside a user gesture and may never produce sound after that.
+    await Promise.all(
+      SFX_IDS.map(async (id) => {
+        if (this.buffers.has(id) || this.pending.has(id)) return;
+        const data = await this.fetchBytes(SFX[id].file);
+        if (data) this.pending.set(id, data);
+      }),
+    );
+    if (this.context) await this.decodePending();
+    if (this.unlocked && this.context?.state === "running") this.startMusic();
+  }
+
+  private async decodePending(): Promise<void> {
+    const context = this.context;
+    if (!context) return;
+    const entries = [...this.pending.entries()];
+    await Promise.all(
+      entries.map(async ([id, data]) => {
+        try {
+          const buffer = await context.decodeAudioData(data.slice(0));
+          this.buffers.set(id, buffer);
+          this.pending.delete(id);
+        } catch {
+          // Leave pending so a later unlock can retry if needed.
+        }
+      }),
+    );
+  }
+
+  private async fetchBytes(file: string): Promise<ArrayBuffer | null> {
     const swapped = file.includes("-") ? file.replaceAll("-", "_") : file.replaceAll("_", "-");
     const candidates = [file, swapped];
     if (file.endsWith(".wav")) {
@@ -219,7 +282,7 @@ export class AudioManager {
         if (!response.ok) continue;
         const data = await response.arrayBuffer();
         if (data.byteLength < 32) continue;
-        return await context.decodeAudioData(data.slice(0));
+        return data;
       } catch {
         continue;
       }
@@ -229,7 +292,7 @@ export class AudioManager {
 
   private ensureContext(): AudioContext {
     if (this.context && this.master && this.musicGain && this.sfxGain) return this.context;
-    const context = new AudioContext();
+    const context = createAudioContext();
     const master = context.createGain();
     master.connect(context.destination);
     const musicGain = context.createGain();
@@ -247,6 +310,10 @@ export class AudioManager {
     this.sfxGain = sfxGain;
     this.sfxBus = sfxBus;
     this.applyMixer();
+    // iOS often re-suspends after backgrounding — re-arm unlock on next gesture.
+    context.addEventListener("statechange", () => {
+      this.unlocked = context.state === "running";
+    });
     return context;
   }
 

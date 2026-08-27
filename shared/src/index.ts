@@ -10,3 +10,4 @@ export * from "./simulation/collision.js";
 export * from "./simulation/movement.js";
 export * from "./simulation/combat.js";
 export * from "./simulation/projectiles.js";
+export * from "./simulation/throw.js";

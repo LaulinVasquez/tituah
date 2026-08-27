@@ -21,6 +21,7 @@ export class UsersRepository {
     displayName?: string;
     username?: string;
     baseAvatarId?: string;
+    throwableId?: string;
   }): Promise<UserProfile | null> {
     const result = await apiRequest<{ profile: UserProfile }>("/api/me", {
       method: "PATCH",

@@ -13,11 +13,19 @@
           <div class="fighter" data-slot="0">
             <span class="name">P1</span>
             <span class="lives"></span>
+            <div class="throw-cooldown" hidden aria-hidden="true" aria-label="Throw cooldown">
+              <span class="throw-cooldown-icon" aria-hidden="true">🩴</span>
+              <span class="throw-cooldown-ring"></span>
+            </div>
             <span class="percent">0%</span>
           </div>
           <div class="fighter" data-slot="2" hidden>
             <span class="name">P3</span>
             <span class="lives"></span>
+            <div class="throw-cooldown" hidden aria-hidden="true" aria-label="Throw cooldown">
+              <span class="throw-cooldown-icon" aria-hidden="true">🩴</span>
+              <span class="throw-cooldown-ring"></span>
+            </div>
             <span class="percent">0%</span>
           </div>
         </div>
@@ -70,11 +78,19 @@
           <div class="fighter" data-slot="1">
             <span class="name">P2</span>
             <span class="lives"></span>
+            <div class="throw-cooldown" hidden aria-hidden="true" aria-label="Throw cooldown">
+              <span class="throw-cooldown-icon" aria-hidden="true">🩴</span>
+              <span class="throw-cooldown-ring"></span>
+            </div>
             <span class="percent">0%</span>
           </div>
           <div class="fighter" data-slot="3" hidden>
             <span class="name">P4</span>
             <span class="lives"></span>
+            <div class="throw-cooldown" hidden aria-hidden="true" aria-label="Throw cooldown">
+              <span class="throw-cooldown-icon" aria-hidden="true">🩴</span>
+              <span class="throw-cooldown-ring"></span>
+            </div>
             <span class="percent">0%</span>
           </div>
         </div>
@@ -194,12 +210,31 @@
               <div id="player-card-moves" class="player-card-body" hidden>
                 <p class="eyebrow">Try a move</p>
                 <div class="move-grid">
-                  <button type="button" data-demo-move="idle">Idle</button>
-                  <button type="button" data-demo-move="run">Run</button>
-                  <button type="button" data-demo-move="jump">Jump</button>
-                  <button type="button" data-demo-move="slap">Slap</button>
-                  <button type="button" data-demo-move="hit">Hit</button>
+                  <button type="button" data-demo-move="run">
+                    <span class="move-label">Run</span>
+                    <span class="move-hint">A / D</span>
+                  </button>
+                  <button type="button" data-demo-move="jump">
+                    <span class="move-label">Jump</span>
+                    <span class="move-hint">Space</span>
+                  </button>
+                  <button type="button" data-demo-move="slap">
+                    <span class="move-label">Slap</span>
+                    <span class="move-hint">Hold H</span>
+                  </button>
+                  <button type="button" data-demo-move="runSlap">
+                    <span class="move-label">Run slap</span>
+                    <span class="move-hint">Move + HH</span>
+                  </button>
+                  <button type="button" data-demo-move="throw">
+                    <span class="move-label">Throw</span>
+                    <span class="move-hint">Hold J</span>
+                  </button>
+                  <button type="button" data-demo-move="hit">
+                    <span class="move-label">Hit</span>
+                  </button>
                 </div>
+                <p class="move-keyboard-hint">Click your fighter, then use the keys above to test moves.</p>
               </div>
             </div>
           </div>
@@ -268,7 +303,7 @@
               <button id="join" type="button">Find match</button>
               <button id="edit-avatar" class="secondary" type="button">Edit fighter</button>
               <button id="sign-out" class="ghost" type="button">Sign out</button>
-              <p class="hint">A / D move · Space twice to double jump · S / ↓ drops through upper platforms · Hold Z to slap</p>
+              <p class="hint">A / D move · Space / W jump · S / ↓ drop through · Hold H to slap · Move + double-tap H for run slap combo · Hold J to charge throw</p>
               <p id="menu-error" class="error" hidden></p>
             </div>
             <div id="pane-waiting" class="pane" hidden>
@@ -289,13 +324,15 @@
             <div id="pane-edit" class="pane" hidden>
               <p class="eyebrow">Fighter</p>
               <h2>Edit</h2>
-              <p class="blurb">Change your name and color. Use the platform under your fighter to preview moves.</p>
+              <p class="blurb">Change your name, color, and throwable. Use the platform under your fighter to preview moves.</p>
               <label>
                 Display name
                 <input id="display-name" maxlength="24" placeholder="Fighter" autocomplete="nickname" />
               </label>
               <p class="stage-heading">Color</p>
               <div id="color-grid" class="color-grid" role="radiogroup" aria-label="Fighter color"></div>
+              <p class="stage-heading">Throwable</p>
+              <div id="throwable-grid" class="throwable-grid" role="radiogroup" aria-label="Throwable"></div>
               <p id="editor-hint" class="blurb" hidden></p>
               <p id="edit-error" class="error" hidden></p>
               <button id="save-avatar" type="button">Save</button>
@@ -335,16 +372,13 @@
         </div>
         <div class="touch-cluster touch-cluster-right">
           <div class="touch-action-row">
-            <button type="button" class="touch-btn touch-btn-down" data-action="down" aria-label="Drop through">
-              <span>Down</span>
+            <button type="button" class="touch-btn touch-btn-slap" data-action="attack" aria-label="Slap">
+              <span>Slap</span>
             </button>
-            <button type="button" class="touch-btn touch-btn-jump" data-action="jump" aria-label="Jump">
-              <span>Jump</span>
+            <button type="button" class="touch-btn touch-btn-throw" data-action="throw" aria-label="Hold to charge throw">
+              <span>Throw</span>
             </button>
           </div>
-          <button type="button" class="touch-btn touch-btn-slap" data-action="attack" aria-label="Slap">
-            <span>Slap</span>
-          </button>
         </div>
       </div>
     </div>

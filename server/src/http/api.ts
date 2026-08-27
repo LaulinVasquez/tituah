@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isFighterColor, type ItemSlot } from "@tituah/shared";
+import { isFighterColor, isThrowableId, type ItemSlot } from "@tituah/shared";
 import { inventoryRepository } from "../repositories/inventory.repository.js";
 import { itemsRepository } from "../repositories/items.repository.js";
 import {
@@ -74,11 +74,16 @@ export async function handleApiRequest(
       if (requestedColor && !isFighterColor(requestedColor)) {
         throw new Error("Invalid fighter color");
       }
+      const requestedThrowable = stringField(body, "throwableId");
+      if (requestedThrowable && !isThrowableId(requestedThrowable)) {
+        throw new Error("Invalid throwable");
+      }
       const { usersRepository } = await import("../repositories/users.repository.js");
       await usersRepository.updateSafeProfile(tokenUser.uid, {
         displayName: stringField(body, "displayName") ?? profile.displayName,
         username: stringField(body, "username") ?? profile.username,
         baseAvatarId: requestedColor,
+        throwableId: requestedThrowable,
       });
       json(res, 200, { profile: await getUserProfile(tokenUser.uid) });
       return true;

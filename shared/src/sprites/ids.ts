@@ -23,6 +23,25 @@ export function fighterColorFromId(id: string | null | undefined): FighterColor 
   return isFighterColor(id) ? id : "orange";
 }
 
+export const THROWABLE_IDS = ["sandal", "stick", "pan", "bat"] as const;
+
+export type ThrowableId = (typeof THROWABLE_IDS)[number];
+
+export const THROWABLE_LABELS: Record<ThrowableId, string> = {
+  sandal: "Sandal",
+  stick: "Stick",
+  pan: "Pan",
+  bat: "Bat",
+};
+
+export function isThrowableId(value: string | null | undefined): value is ThrowableId {
+  return value != null && (THROWABLE_IDS as readonly string[]).includes(value);
+}
+
+export function throwableIdFromAvatar(id: string | null | undefined): ThrowableId {
+  return isThrowableId(id) ? id : "sandal";
+}
+
 export const SPRITE_ASSET_IDS = {
   basicCap: "basic_cap_01",
   cowboyHat: "cowboy_hat_01",

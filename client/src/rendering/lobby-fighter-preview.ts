@@ -1,12 +1,36 @@
-import { Application, BlurFilter } from "pixi.js";
+import { Application, BlurFilter, Sprite, type Texture } from "pixi.js";
 import {
   emptyAvatar,
+  RUN_SLAP_FPS,
+  RUN_SLAP_FRAME_COUNT,
+  MAX_JUMPS,
+  MOVE_SPEED,
   PRIMARY_ATTACK_ID,
+  THROW_ANIM_DURATION,
+  playerCanStartAttack,
+  releaseAttack,
+  startAttack,
+  startThrowCharge,
+  getThrowCharge,
+  cancelThrowCharge,
+  isThrowCharging,
+  triggerRunningFourSlap,
+  updateAttackState,
+  throwableIdFromAvatar,
   type AvatarConfiguration,
   type PlayerCount,
   type PlayerState,
+  type ThrowableId,
 } from "@tituah/shared";
+import { InputManager } from "../input/input-manager.js";
 import { FIGHTER_VISUAL_HEIGHT } from "./sprites/fighter-atlas.js";
+import {
+  PROJECTILE_FPS,
+  PROJECTILE_FRAME_COUNT,
+  loadProjectileTextures,
+  projectilePreviewScale,
+  projectileTexturesFor,
+} from "./sprites/projectile-atlas.js";
 import { FighterSprite } from "./sprites/fighter-sprite.js";
 import { pixiOptions } from "./renderer-options.js";
 import { audio } from "../audio/audio-manager.js";
@@ -18,8 +42,21 @@ const PREVIEW_SCALE = 0.72;
 const RUN_DEMO_MS = 2200;
 const JOIN_RUN_MS = 780;
 const REVEAL_MS = 420;
+const THROW_DEMO_MS = 880;
+const RUN_SLAP_DEMO_MS = Math.round((RUN_SLAP_FRAME_COUNT / RUN_SLAP_FPS + 0.15) * 1000);
+const DEMO_WALK_SPEED = 150;
+const DEMO_JUMP_VELOCITY = -280;
+const DEMO_GRAVITY = 1100;
+const DEMO_MAX_FALL_SPEED = 520;
 
-export type LobbyDemoMove = "idle" | "run" | "jump" | "slap" | "hit";
+export type LobbyDemoMove =
+  | "idle"
+  | "run"
+  | "jump"
+  | "slap"
+  | "runSlap"
+  | "hit"
+  | "throw";
 
 export type PodiumStatus = "ready" | "pending" | "left";
 
@@ -57,7 +94,19 @@ export class LobbyFighterPreview {
   private podiumInputBound = false;
   private animating = false;
   private demoToken = 0;
+  private projectileTextures: Record<ThrowableId, Texture[]> | null = null;
+  private projectileSprite: Sprite | null = null;
   private resizeObserver?: ResizeObserver;
+  private demoInput: InputManager | null = null;
+  private demoKeyboardEnabled = false;
+  private demoJumpHeld = false;
+  private demoMoveHighlight: LobbyDemoMove = "idle";
+  private onDemoMoveActive: ((move: LobbyDemoMove) => void) | null = null;
+  private demoCanvasBound = false;
+  private demoGroundY = 0;
+  private demoMinX = 0;
+  private demoMaxX = 0;
+  private demoMinY = 0;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -86,10 +135,20 @@ export class LobbyFighterPreview {
     this.app.stage.eventMode = "none";
     this.app.stage.interactiveChildren = false;
     await Promise.all(this.fighters.map((fighter) => fighter.load()));
+    this.projectileTextures = await loadProjectileTextures();
+    this.projectileSprite = new Sprite(this.projectileTextures.sandal[0]);
+    this.projectileSprite.anchor.set(0.5);
+    this.projectileSprite.visible = false;
+    this.projectileSprite.eventMode = "none";
+    // FighterSprite sets zIndex each frame (and that enables stage sorting), so the
+    // projectile must stay well above throw/hit boosts (~y + 1100).
+    this.projectileSprite.zIndex = 100_000;
     for (const fighter of this.fighters) {
       fighter.visible = false;
       this.app.stage.addChild(fighter);
     }
+    this.app.stage.addChild(this.projectileSprite);
+    this.app.stage.sortableChildren = true;
     this.localFighter.visible = true;
     this.ready = true;
     this.layout();
@@ -113,6 +172,10 @@ export class LobbyFighterPreview {
         this.localPlayer.position.x += this.localPlayer.velocity.x * dt;
       }
       if (this.layoutMode === "solo") {
+        if (this.demoKeyboardEnabled) {
+          this.processDemoKeyboard(dt);
+        }
+        this.stepDemoPhysics(dt);
         this.localFighter.visible = true;
         this.localFighter.update(this.localPlayer, this.time);
         this.localFighter.scale.set(this.scale);
@@ -154,6 +217,43 @@ export class LobbyFighterPreview {
     window.visualViewport?.addEventListener("resize", () => this.layout());
     this.onPodiumKeyDown = this.onPodiumKeyDown.bind(this);
     this.onPodiumPointerDown = this.onPodiumPointerDown.bind(this);
+    this.onDemoCanvasPointerDown = this.onDemoCanvasPointerDown.bind(this);
+  }
+
+  setDemoKeyboardEnabled(
+    enabled: boolean,
+    onMoveActive?: (move: LobbyDemoMove) => void,
+  ): void {
+    this.demoKeyboardEnabled = enabled;
+    this.onDemoMoveActive = onMoveActive ?? null;
+    if (enabled) {
+      this.demoInput ??= new InputManager(this.canvas);
+      this.demoInput.reset();
+      this.demoJumpHeld = false;
+      this.demoMoveHighlight = "idle";
+      this.canvas.tabIndex = -1;
+      if (!this.demoCanvasBound) {
+        this.canvas.addEventListener("pointerdown", this.onDemoCanvasPointerDown);
+        this.demoCanvasBound = true;
+      }
+      return;
+    }
+    if (this.demoCanvasBound) {
+      this.canvas.removeEventListener("pointerdown", this.onDemoCanvasPointerDown);
+      this.demoCanvasBound = false;
+    }
+    this.demoInput?.dispose();
+    this.demoInput = null;
+    this.demoJumpHeld = false;
+  }
+
+  private onDemoCanvasPointerDown(): void {
+    if (!this.demoKeyboardEnabled) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+      active.blur();
+    }
+    this.canvas.focus({ preventScroll: true });
   }
 
   private onPodiumKeyDown(event: KeyboardEvent): void {
@@ -206,7 +306,7 @@ export class LobbyFighterPreview {
   }
 
   setAvatar(avatar: AvatarConfiguration | null): void {
-    this.localPlayer.avatar = avatar ? { ...avatar } : emptyAvatar();
+    this.localPlayer.avatar = avatar ? { ...emptyAvatar(), ...avatar } : emptyAvatar();
   }
 
   setSpawnPreview(spawnIndex: 0 | 1): void {
@@ -484,15 +584,151 @@ export class LobbyFighterPreview {
     if (!this.ready || this.loading || this.seeking || this.layoutMode === "matchmaking") return;
     const token = this.demoToken + 1;
     this.demoToken = token;
+    if (this.projectileSprite) this.projectileSprite.visible = false;
     this.resetBody(this.localPlayer);
     if (move !== "run") audio.stop("run");
     if (move === "idle") return;
     if (move === "run") void this.playRun(token);
     if (move === "jump") void this.playJump(token);
     if (move === "slap") void this.playSlapInPlace(token);
+    if (move === "runSlap") void this.playRunningFourSlap(token);
     if (move === "hit") {
       audio.play("hit");
       this.localFighter.showHit(this.time, 1, 1);
+    }
+    if (move === "throw") void this.playThrow(token, 0.45);
+  }
+
+  private shouldIgnoreDemoKeyboard(): boolean {
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return true;
+    if (active?.closest("#audio-mixer, #exit-confirm")) return true;
+    return false;
+  }
+
+  private notifyDemoMove(move: LobbyDemoMove): void {
+    if (move === this.demoMoveHighlight) return;
+    this.demoMoveHighlight = move;
+    this.onDemoMoveActive?.(move);
+  }
+
+  private interruptCannedDemo(): void {
+    this.demoToken += 1;
+    if (this.projectileSprite) this.projectileSprite.visible = false;
+    this.localPlayer.throwAnimUntil = 0;
+    this.localPlayer.throwChargeStartedAt = 0;
+    this.localPlayer.throwCooldownEndsAt = 0;
+    audio.stop("run");
+  }
+
+  private processDemoKeyboard(dt: number): void {
+    if (!this.demoInput || this.shouldIgnoreDemoKeyboard()) return;
+
+    const sample = this.demoInput.sample();
+    const { input, attackEdge, throwEdge, runningFourSlapEdge, quickSlapPulse, quickThrowPulse } =
+      sample;
+    const jumpEdge = input.jump && !this.demoJumpHeld;
+    this.demoJumpHeld = input.jump;
+
+    updateAttackState(this.localPlayer, this.time);
+    // Lobby demo: auto-release at full charge without locking throwCooldownEndsAt forever.
+    if (isThrowCharging(this.localPlayer) && getThrowCharge(this.localPlayer, this.time) >= 1) {
+      cancelThrowCharge(this.localPlayer);
+      audio.stop("slapCharge");
+      void this.playThrow(this.demoToken, 1);
+      this.notifyDemoMove("throw");
+    }
+
+    const locomoting =
+      this.localPlayer.attackState.type === "idle"
+      || this.localPlayer.attackState.type === "recovery";
+
+    if (this.localPlayer.attackState.type === "combo") {
+      this.localPlayer.position.x += this.localPlayer.velocity.x * dt;
+      this.clampDemoPosition();
+    } else if (locomoting) {
+      if (input.left) {
+        this.localPlayer.facing = -1;
+        this.localPlayer.velocity.x = -DEMO_WALK_SPEED;
+        this.localPlayer.position.x += this.localPlayer.velocity.x * dt;
+        audio.playLoop("run");
+        this.notifyDemoMove("run");
+      } else if (input.right) {
+        this.localPlayer.facing = 1;
+        this.localPlayer.velocity.x = DEMO_WALK_SPEED;
+        this.localPlayer.position.x += this.localPlayer.velocity.x * dt;
+        audio.playLoop("run");
+        this.notifyDemoMove("run");
+      } else {
+        this.localPlayer.velocity.x = 0;
+        audio.stop("run");
+        if (this.localPlayer.attackState.type === "idle") this.notifyDemoMove("idle");
+      }
+      this.clampDemoPosition();
+    }
+
+    if (jumpEdge && locomoting) {
+      this.interruptCannedDemo();
+      if (this.tryDemoJump()) {
+        this.notifyDemoMove("jump");
+      }
+      return;
+    }
+
+    if (runningFourSlapEdge) {
+      this.interruptCannedDemo();
+      if (triggerRunningFourSlap(this.localPlayer, this.time)) {
+        audio.playLoop("run");
+        audio.play("slapSwing");
+        this.notifyDemoMove("runSlap");
+      }
+      return;
+    }
+
+    if (throwEdge === "start") {
+      this.interruptCannedDemo();
+      this.localPlayer.throwCooldownEndsAt = 0;
+      if (!startThrowCharge(this.localPlayer, this.time)) return;
+      audio.play("slapCharge");
+      this.notifyDemoMove("throw");
+      return;
+    }
+
+    if (throwEdge === "release" || quickThrowPulse) {
+      const charge = quickThrowPulse ? 0 : getThrowCharge(this.localPlayer, this.time);
+      cancelThrowCharge(this.localPlayer);
+      audio.stop("slapCharge");
+      this.interruptCannedDemo();
+      void this.playThrow(this.demoToken, charge);
+      this.notifyDemoMove("throw");
+      return;
+    }
+
+    if (isThrowCharging(this.localPlayer)) {
+      this.notifyDemoMove("throw");
+    }
+
+    if (quickSlapPulse && playerCanStartAttack(this.localPlayer)) {
+      this.interruptCannedDemo();
+      startAttack(this.localPlayer, this.time);
+      releaseAttack(this.localPlayer, this.time);
+      audio.play("slapSwing");
+      this.notifyDemoMove("slap");
+      return;
+    }
+
+    if (attackEdge === "start" && playerCanStartAttack(this.localPlayer)) {
+      this.interruptCannedDemo();
+      startAttack(this.localPlayer, this.time);
+      audio.play("slapCharge");
+      this.notifyDemoMove("slap");
+      return;
+    }
+
+    if (attackEdge === "release" && this.localPlayer.attackState.type === "charging") {
+      releaseAttack(this.localPlayer, this.time);
+      audio.stop("slapCharge");
+      audio.play("slapSwing");
     }
   }
 
@@ -516,6 +752,17 @@ export class LobbyFighterPreview {
       ? (this.localSlot % 2 === 0 ? 1 : -1)
       : 1;
     await this.playJump(token, onApex);
+  }
+
+  async throwItem(): Promise<void> {
+    if (!this.ready || this.loading || this.seeking || this.layoutMode === "matchmaking") return;
+    const token = this.demoToken + 1;
+    this.demoToken = token;
+    if (this.projectileSprite) this.projectileSprite.visible = false;
+    this.resetBody(this.localPlayer);
+    audio.stop("run");
+    this.localPlayer.facing = 1;
+    await this.playThrow(token, 0.55);
   }
 
   async slap(target: HTMLElement, onHit?: () => void): Promise<number> {
@@ -568,8 +815,26 @@ export class LobbyFighterPreview {
       }
       return;
     }
-    this.localPlayer.position.x = lanes[0];
-    this.localPlayer.position.y = feetY - lobby.top;
+
+    const stageLeft = stage.left - lobby.left;
+    const groundY = feetY - lobby.top;
+    this.demoGroundY = groundY;
+    this.demoMinX = stageLeft + 24;
+    this.demoMaxX = stageLeft + stage.width - 24;
+    this.demoMinY = (stageTop - lobby.top) + 24;
+
+    if (this.demoKeyboardEnabled) {
+      if (this.localPlayer.grounded) {
+        this.localPlayer.position.y = groundY;
+      }
+      this.clampDemoPosition();
+      return;
+    }
+
+    if (!this.animating) {
+      this.localPlayer.position.x = lanes[0];
+      this.localPlayer.position.y = groundY;
+    }
   }
 
   private layoutExtraPlatforms(lanes: number[], feetY: number): void {
@@ -660,8 +925,62 @@ export class LobbyFighterPreview {
     player.velocity.x = 0;
     player.velocity.y = 0;
     player.grounded = true;
+    player.jumpsRemaining = MAX_JUMPS;
     player.attackState = { type: "idle" };
+    player.throwAnimUntil = 0;
+    player.throwChargeStartedAt = 0;
+    player.throwCooldownEndsAt = 0;
+    if (this.demoGroundY > 0) {
+      player.position.y = this.demoGroundY;
+    }
+    this.clampDemoPosition();
     this.layout();
+  }
+
+  private clampDemoPosition(): void {
+    if (this.demoMaxX > this.demoMinX) {
+      this.localPlayer.position.x = Math.max(
+        this.demoMinX,
+        Math.min(this.demoMaxX, this.localPlayer.position.x),
+      );
+    }
+    if (!this.localPlayer.grounded && this.demoMinY > 0) {
+      this.localPlayer.position.y = Math.max(this.demoMinY, this.localPlayer.position.y);
+    }
+  }
+
+  private tryDemoJump(): boolean {
+    if (!this.localPlayer.grounded && this.localPlayer.jumpsRemaining <= 0) return false;
+    if (this.localPlayer.grounded) {
+      this.localPlayer.jumpsRemaining = MAX_JUMPS;
+    }
+    if (this.localPlayer.jumpsRemaining <= 0) return false;
+
+    this.localPlayer.grounded = false;
+    this.localPlayer.velocity.y = DEMO_JUMP_VELOCITY;
+    this.localPlayer.jumpsRemaining -= 1;
+    audio.play("jump");
+    return true;
+  }
+
+  private stepDemoPhysics(dt: number): void {
+    if (this.localPlayer.grounded || this.demoGroundY <= 0) return;
+
+    this.localPlayer.velocity.y = Math.min(
+      DEMO_MAX_FALL_SPEED,
+      this.localPlayer.velocity.y + DEMO_GRAVITY * dt,
+    );
+    this.localPlayer.position.y += this.localPlayer.velocity.y * dt;
+
+    if (this.localPlayer.position.y >= this.demoGroundY) {
+      this.localPlayer.position.y = this.demoGroundY;
+      this.localPlayer.velocity.y = 0;
+      this.localPlayer.grounded = true;
+      this.localPlayer.jumpsRemaining = MAX_JUMPS;
+      audio.play("land");
+    }
+
+    this.clampDemoPosition();
   }
 
   private async playRun(token: number): Promise<void> {
@@ -678,23 +997,15 @@ export class LobbyFighterPreview {
   }
 
   private async playJump(token: number, onApex?: () => void): Promise<void> {
-    audio.play("jump");
-    const baseY = this.localPlayer.position.y;
-    this.localPlayer.grounded = false;
-    this.localPlayer.velocity.y = -20;
-    this.localPlayer.position.y = baseY - 36;
-    await wait(280);
-    if (token !== this.demoToken) return;
-    this.localPlayer.velocity.y = 50;
-    this.localPlayer.position.y = baseY - 12;
-    const apexWork = Promise.resolve(onApex?.());
-    await wait(180);
-    await apexWork;
-    if (token !== this.demoToken) return;
-    this.localPlayer.grounded = true;
-    this.localPlayer.velocity.y = 0;
-    this.localPlayer.position.y = baseY;
-    audio.play("land");
+    if (!this.tryDemoJump()) return;
+    let apexCalled = false;
+    while (token === this.demoToken && !this.localPlayer.grounded) {
+      if (!apexCalled && this.localPlayer.velocity.y >= 0) {
+        apexCalled = true;
+        await Promise.resolve(onApex?.());
+      }
+      await wait(16);
+    }
   }
 
   private async playSlapInPlace(
@@ -743,6 +1054,83 @@ export class LobbyFighterPreview {
     if (token !== this.demoToken || this.loading || this.seeking) return;
     this.localPlayer.attackState = { type: "idle" };
   }
+
+  private async playThrow(token: number, charge = 0): Promise<void> {
+    const sprite = this.projectileSprite;
+    const allTextures = this.projectileTextures;
+    if (!sprite || !allTextures) return;
+
+    const throwableId = throwableIdFromAvatar(this.localPlayer.avatar?.throwableId);
+    const frames = projectileTexturesFor(allTextures, throwableId);
+    const power = Math.min(1, Math.max(0, charge));
+    const flightBoost = 1 + power * 0.75;
+
+    this.localPlayer.facing = 1;
+    this.localPlayer.throwChargeStartedAt = 0;
+    this.localPlayer.throwAnimUntil = this.time + THROW_ANIM_DURATION;
+    audio.play("slapSwing");
+
+    const scale = projectilePreviewScale(this.scale);
+    const releaseDelay = 1 / 10; // align flight with throw release frame
+    const demoMs = THROW_DEMO_MS / flightBoost;
+    const started = performance.now();
+    const flightStart = started + releaseDelay * 1000;
+    const startX = this.localPlayer.position.x + 38 * this.localPlayer.facing;
+    const startY = this.localPlayer.position.y - FIGHTER_VISUAL_HEIGHT * this.scale * 0.55;
+    const endX = startX + 220 * flightBoost * this.localPlayer.facing;
+    const endY = startY - 28;
+
+    sprite.visible = false;
+    sprite.rotation = Math.atan2(endY - startY, endX - startX);
+    sprite.scale.set(scale * this.localPlayer.facing, scale);
+    sprite.zIndex = 100_000;
+    this.app.stage.addChild(sprite);
+
+    try {
+      while (performance.now() - started < demoMs) {
+        if (token !== this.demoToken) break;
+        const now = performance.now();
+        if (now >= flightStart) {
+          const elapsed = (now - flightStart) / 1000;
+          const t = Math.min(1, elapsed / ((demoMs - releaseDelay * 1000) / 1000));
+          sprite.visible = true;
+          sprite.zIndex = 100_000;
+          sprite.position.set(
+            startX + (endX - startX) * t,
+            startY + (endY - startY) * t,
+          );
+          const frameIndex = Math.floor(elapsed * PROJECTILE_FPS) % PROJECTILE_FRAME_COUNT;
+          sprite.texture = frames[frameIndex] ?? frames[0];
+        }
+        await wait(16);
+      }
+    } finally {
+      sprite.visible = false;
+      if (token === this.demoToken) {
+        this.localPlayer.throwAnimUntil = 0;
+        this.localPlayer.throwChargeStartedAt = 0;
+        this.resetBody(this.localPlayer);
+      } else if (this.localPlayer.throwAnimUntil <= this.time) {
+        this.localPlayer.throwAnimUntil = 0;
+      }
+    }
+  }
+
+  private async playRunningFourSlap(token: number): Promise<void> {
+    this.localPlayer.facing = 1;
+    triggerRunningFourSlap(this.localPlayer, this.time);
+    audio.playLoop("run");
+    audio.play("slapSwing");
+    const deadline = this.time + RUN_SLAP_DEMO_MS / 1000;
+    while (this.time < deadline && token === this.demoToken) {
+      updateAttackState(this.localPlayer, this.time);
+      this.localPlayer.position.x += MOVE_SPEED * 0.88 * 0.016;
+      await wait(16);
+    }
+    audio.stop("run");
+    if (token !== this.demoToken) return;
+    this.resetBody(this.localPlayer);
+  }
 }
 
 function idlePlayer(id: string, spawnIndex: number): PlayerState {
@@ -757,6 +1145,9 @@ function idlePlayer(id: string, spawnIndex: number): PlayerState {
     health: 100,
     damagePercent: 0,
     attackState: { type: "idle" },
+    throwCooldownEndsAt: 0,
+    throwAnimUntil: 0,
+    throwChargeStartedAt: 0,
     lives: 1,
     lastInputSeq: 0,
     spawnIndex,

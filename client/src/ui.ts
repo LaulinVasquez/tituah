@@ -1,15 +1,23 @@
 import {
   FIGHTER_COLOR_HEX,
   FIGHTER_COLORS,
+  THROWABLE_IDS,
+  THROWABLE_LABELS,
   emptyAvatar,
+  findActiveFlipflop,
+  flipflopThrowReloadProgress,
   fighterColorFromId,
+  getStage,
   isFighterColor,
   isStageId,
+  isThrowableId,
   parsePlayerCount,
+  throwableIdFromAvatar,
   type FighterColor,
   type PlayerCount,
   type StageId,
   type PlayerState,
+  type ThrowableId,
   type UserProfile,
 } from "@tituah/shared";
 import type { GameState } from "./game/game-state.js";
@@ -25,7 +33,15 @@ import { prefersNativeTapHandling } from "./config/runtime.js";
 
 type LobbyPane = "landing" | "login" | "menu" | "waiting" | "result" | "edit";
 
-const DEMO_MOVES = new Set<LobbyDemoMove>(["idle", "run", "jump", "slap", "hit"]);
+const DEMO_MOVES = new Set<LobbyDemoMove>([
+  "idle",
+  "run",
+  "jump",
+  "slap",
+  "runSlap",
+  "hit",
+  "throw",
+]);
 
 export class Ui {
   readonly overlay = required("#overlay");
@@ -42,6 +58,7 @@ export class Ui {
   readonly menuBlurb = required("#menu-blurb");
   readonly editorHint = required("#editor-hint");
   readonly colorGrid = required("#color-grid");
+  readonly throwableGrid = required("#throwable-grid");
   readonly editButton = required("#edit-avatar", HTMLButtonElement);
   readonly saveAvatarButton = required("#save-avatar", HTMLButtonElement);
   readonly displayNameInput = required("#display-name", HTMLInputElement);
@@ -76,7 +93,9 @@ export class Ui {
   private editPreviewToken = 0;
   private guestSession = false;
   private selectedColor: FighterColor = "orange";
+  private selectedThrowable: ThrowableId = "sandal";
   private onColorSelected: (color: FighterColor) => void = () => undefined;
+  private onThrowableSelected: (throwableId: ThrowableId) => void = () => undefined;
   private profile: UserProfile | null = null;
   private fighter?: LobbyFighterPreview;
   private selectedStage: StageId = "barnyard";
@@ -97,6 +116,7 @@ export class Ui {
     node: slot,
     name: slot.querySelector(".name"),
     lives: slot.querySelector(".lives"),
+    throwCooldown: slot.querySelector<HTMLElement>(".throw-cooldown"),
     percent: slot.querySelector(".percent"),
   }));
 
@@ -147,6 +167,13 @@ export class Ui {
       if (!isFighterColor(color)) return;
       void this.selectColor(color, true);
     });
+    this.throwableGrid.addEventListener("click", (event) => {
+      const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-throwable]");
+      if (!button || button.disabled || this.slapping) return;
+      const throwableId = button.dataset.throwable;
+      if (!isThrowableId(throwableId)) return;
+      void this.selectThrowable(throwableId, true);
+    });
     this.selectStage(this.selectedStage);
     this.selectPlayerCount(this.selectedPlayerCount);
     this.bindMixer();
@@ -175,8 +202,9 @@ export class Ui {
           ) {
             return;
           }
-          // Color swatches handle their own in-place jump.
+          // Color / throwable swatches handle their own in-place jump.
           if (button.classList.contains("color-swatch")) return;
+          if (button.classList.contains("throwable-swatch")) return;
           const demo = button.dataset.demoMove;
           if (demo && isDemoMove(demo)) {
             event.preventDefault();
@@ -315,10 +343,12 @@ export class Ui {
     this.setOverlay(true);
     if (this.pane !== "edit") this.paneBeforeEdit = this.pane;
     this.selectedColor = fighterColorFromId(profile?.avatar.baseAvatarId);
+    this.selectedThrowable = throwableIdFromAvatar(profile?.avatar.throwableId);
     this.setPreview(profile, this.guestSession);
     this.displayNameInput.value = profile?.displayName ?? "";
     this.setPane("edit");
     this.renderColorPicker(profile);
+    this.renderThrowablePicker(profile);
     this.setError(this.editError, error);
     this.setActiveMove("idle");
     this.displayNameInput.focus();
@@ -326,6 +356,10 @@ export class Ui {
 
   fighterColor(): FighterColor {
     return this.selectedColor;
+  }
+
+  fighterThrowable(): ThrowableId {
+    return this.selectedThrowable;
   }
 
   closeEditor(): void {
@@ -376,6 +410,9 @@ export class Ui {
         health: 100,
         damagePercent: 0,
         attackState: { type: "idle" },
+        throwCooldownEndsAt: 0,
+        throwAnimUntil: 0,
+        throwChargeStartedAt: 0,
         lives: 1,
         lastInputSeq: 0,
         spawnIndex,
@@ -586,6 +623,41 @@ export class Ui {
     }
   }
 
+  updateThrowCooldown(state: GameState, time: number): void {
+    if (this.hud.hidden) return;
+    const localId = state.localPlayerId;
+    if (!localId) return;
+
+    const local =
+      state.predicted?.id === localId
+        ? state.predicted
+        : state.snapshot?.players.find((player) => player.id === localId);
+    if (!local) return;
+
+    const slot = this.hudSlots.find((entry) => entry.index === local.spawnIndex);
+    const cooldown = slot?.throwCooldown;
+    if (!cooldown) return;
+
+    const projectiles = state.snapshot?.projectiles ?? [];
+    const activeFlipflop = findActiveFlipflop(projectiles, localId);
+    const locked = activeFlipflop != null || local.throwCooldownEndsAt > time;
+
+    if (!locked) {
+      cooldown.hidden = true;
+      cooldown.style.removeProperty("--progress");
+      return;
+    }
+
+    const blast = getStage(state.snapshot?.stageId ?? "barnyard").blast;
+    const progress = activeFlipflop
+      ? flipflopThrowReloadProgress(activeFlipflop, blast)
+      : 1;
+
+    cooldown.hidden = false;
+    cooldown.style.setProperty("--progress", String(Math.min(1, progress)));
+    cooldown.setAttribute("aria-valuenow", String(Math.round(progress * 100)));
+  }
+
   onChooseGuest(handler: () => void): void {
     bindPress(this.chooseGuestButton, handler, this.directTapHandling);
   }
@@ -644,6 +716,10 @@ export class Ui {
 
   onSelectColor(handler: (color: FighterColor) => void): void {
     this.onColorSelected = handler;
+  }
+
+  onSelectThrowable(handler: (throwableId: ThrowableId) => void): void {
+    this.onThrowableSelected = handler;
   }
 
   rememberName(explicit?: string): void {
@@ -839,9 +915,41 @@ export class Ui {
     this.syncColorButtons();
   }
 
+  private renderThrowablePicker(profile: UserProfile | null): void {
+    this.throwableGrid.replaceChildren();
+    if (!profile) return;
+
+    this.selectedThrowable = throwableIdFromAvatar(profile.avatar.throwableId);
+    for (const id of THROWABLE_IDS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "throwable-swatch";
+      button.dataset.throwable = id;
+      button.setAttribute("aria-label", THROWABLE_LABELS[id]);
+      button.title = THROWABLE_LABELS[id];
+      const icon = document.createElement("span");
+      icon.className = "throwable-swatch-icon";
+      icon.setAttribute("aria-hidden", "true");
+      const label = document.createElement("span");
+      label.textContent = THROWABLE_LABELS[id];
+      button.append(icon, label);
+      this.throwableGrid.append(button);
+    }
+    this.syncThrowableButtons();
+  }
+
   private syncColorButtons(): void {
     for (const button of this.colorGrid.querySelectorAll<HTMLButtonElement>("[data-color]")) {
       const selected = button.dataset.color === this.selectedColor;
+      button.dataset.selected = String(selected);
+      button.setAttribute("aria-checked", String(selected));
+      button.setAttribute("role", "radio");
+    }
+  }
+
+  private syncThrowableButtons(): void {
+    for (const button of this.throwableGrid.querySelectorAll<HTMLButtonElement>("[data-throwable]")) {
+      const selected = button.dataset.throwable === this.selectedThrowable;
       button.dataset.selected = String(selected);
       button.setAttribute("aria-checked", String(selected));
       button.setAttribute("role", "radio");
@@ -852,7 +960,11 @@ export class Ui {
     if (color === this.selectedColor) return;
     this.selectedColor = color;
     this.syncColorButtons();
-    const avatar = { ...(this.profile?.avatar ?? emptyAvatar()), baseAvatarId: color };
+    const avatar = {
+      ...(this.profile?.avatar ?? emptyAvatar()),
+      baseAvatarId: color,
+      throwableId: this.selectedThrowable,
+    };
     if (this.profile) this.profile = { ...this.profile, avatar };
     this.onColorSelected(color);
     if (!animate) {
@@ -865,6 +977,29 @@ export class Ui {
       if (request !== this.editPreviewToken) return;
       this.fighter?.setAvatar(avatar);
     });
+    this.slapping = false;
+  }
+
+  private async selectThrowable(throwableId: ThrowableId, animate = false): Promise<void> {
+    if (throwableId === this.selectedThrowable) return;
+    this.selectedThrowable = throwableId;
+    this.syncThrowableButtons();
+    const avatar = {
+      ...(this.profile?.avatar ?? emptyAvatar()),
+      baseAvatarId: this.selectedColor,
+      throwableId,
+    };
+    if (this.profile) this.profile = { ...this.profile, avatar };
+    this.onThrowableSelected(throwableId);
+    this.fighter?.setAvatar(avatar);
+    if (!animate) return;
+    const request = ++this.editPreviewToken;
+    this.slapping = true;
+    this.setActiveMove("throw");
+    if (this.fighter) {
+      await this.fighter.throwItem();
+    }
+    if (request === this.editPreviewToken) this.setActiveMove("throw");
     this.slapping = false;
   }
 
@@ -935,6 +1070,10 @@ export class Ui {
     this.menuError.hidden = true;
     this.editError.hidden = true;
     if (pane !== "result") this.hideResultBanner();
+    this.fighter?.setDemoKeyboardEnabled(
+      pane === "edit",
+      (move) => this.setActiveMove(move),
+    );
     this.updatePlayerCard();
     requestAnimationFrame(() => this.fighter?.layout());
   }

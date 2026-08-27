@@ -1,4 +1,4 @@
-import type { PlayerState } from "@tituah/shared";
+import { isThrowCharging, type PlayerState } from "@tituah/shared";
 import { audio } from "./audio-manager.js";
 
 const RUN_SPEED = 24;
@@ -7,6 +7,8 @@ interface TrackedPlayer {
   grounded: boolean;
   jumpsRemaining: number;
   attack: PlayerState["attackState"]["type"];
+  throwCharging: boolean;
+  throwAnim: boolean;
   velocityY: number;
   running: boolean;
 }
@@ -37,6 +39,11 @@ export class SfxDirector {
     if (prev.attack !== "charging" && next.attack === "charging") audio.play("slapCharge");
     if (prev.attack === "charging" && next.attack !== "charging") audio.stop("slapCharge");
     if (prev.attack === "charging" && next.attack === "active") audio.play("slapSwing");
+
+    // Same slapCharge one-shot as punch charge — do not loop or use a different cue.
+    if (!prev.throwCharging && next.throwCharging) audio.play("slapCharge");
+    if (prev.throwCharging && !next.throwCharging) audio.stop("slapCharge");
+    if (prev.throwCharging && next.throwAnim) audio.play("slapSwing");
 
     if (next.running) audio.playLoop("run");
     else audio.stop("run");
@@ -69,6 +76,8 @@ function snapshot(player: PlayerState): TrackedPlayer {
     grounded: player.grounded,
     jumpsRemaining: player.jumpsRemaining,
     attack: player.attackState.type,
+    throwCharging: isThrowCharging(player),
+    throwAnim: (player.throwAnimUntil ?? 0) > 0,
     velocityY: player.velocity.y,
     running: player.grounded && Math.abs(player.velocity.x) >= RUN_SPEED,
   };

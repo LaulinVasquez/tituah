@@ -8,7 +8,8 @@ import {
   PLAYER_HEIGHT,
   PLAYER_WIDTH,
 } from "../data/physics.js";
-import { getAttack, PRIMARY_ATTACK_ID } from "../data/attacks.js";
+import { getAttack, PRIMARY_ATTACK_ID, RUN_SLAP_COMBO_ID, RUN_SLAP_FPS, RUN_SLAP_HIT_FRAME_INDICES } from "../data/attacks.js";
+import { MOVE_SPEED } from "../data/physics.js";
 import type {
   AttackDefinition,
   AttackHitboxDef,
@@ -18,6 +19,11 @@ import type {
   PlayerInput,
   PlayerState,
 } from "../types.js";
+
+// Avoid circular import with throw.ts — inline the clear.
+function clearThrowCharge(player: PlayerState): void {
+  player.throwChargeStartedAt = 0;
+}
 
 export function getCharge(duration: number, attack: AttackDefinition): number {
   const maxCharge = attack.maxChargeTime ?? 0;
@@ -128,12 +134,47 @@ export function playerCanStartAttack(player: PlayerState): boolean {
   return player.attackState.type === "idle" && player.lives > 0;
 }
 
+export function cancelAttackCharge(player: PlayerState): void {
+  if (player.attackState.type === "charging") {
+    player.attackState = { type: "idle" };
+  }
+}
+
+export function triggerRunningFourSlap(player: PlayerState, time: number): boolean {
+  if (player.lives <= 0) return false;
+  clearThrowCharge(player);
+  cancelAttackCharge(player);
+  if (player.attackState.type === "recovery") {
+    player.attackState = { type: "idle" };
+  }
+  if (player.attackState.type !== "idle") return false;
+
+  player.attackState = {
+    type: "combo",
+    attackId: RUN_SLAP_COMBO_ID,
+    startedAt: time,
+  };
+  player.velocity.x = MOVE_SPEED * player.facing * 0.88;
+  return true;
+}
+
+export function comboHitTime(startedAt: number, hitIndex: number): number {
+  const frame = RUN_SLAP_HIT_FRAME_INDICES[hitIndex] ?? RUN_SLAP_HIT_FRAME_INDICES.at(-1)!;
+  return startedAt + (frame + 0.5) / RUN_SLAP_FPS;
+}
+
+export function isComboAttack(state: AttackState): boolean {
+  return state.type === "combo";
+}
+
 export function startAttack(
   player: PlayerState,
   time: number,
   attackId = PRIMARY_ATTACK_ID,
 ): void {
   if (!playerCanStartAttack(player)) return;
+  // Can't slap while winding up a throw.
+  if ((player.throwChargeStartedAt ?? 0) > 0) return;
   player.attackState = {
     type: "charging",
     attackId,
@@ -177,6 +218,18 @@ export function updateAttackState(player: PlayerState, time: number): void {
     return;
   }
 
+  if (state.type === "combo") {
+    const attack = getAttack(state.attackId);
+    if (time - state.startedAt >= attack.activeDuration) {
+      player.attackState = {
+        type: "recovery",
+        attackId: state.attackId,
+        endsAt: time + attack.cooldown,
+      };
+    }
+    return;
+  }
+
   if (state.type === "recovery" && time >= state.endsAt) {
     player.attackState = { type: "idle" };
   }
@@ -188,11 +241,13 @@ export function syncAttackFromInput(
   previousInput: PlayerInput,
   time: number,
 ): void {
-  if (input.attackHeld && !previousInput.attackHeld) {
-    startAttack(player, time);
-  }
-  if (!input.attackHeld && previousInput.attackHeld) {
-    releaseAttack(player, time);
+  if (player.attackState.type !== "combo") {
+    if (input.attackHeld && !previousInput.attackHeld) {
+      startAttack(player, time);
+    }
+    if (!input.attackHeld && previousInput.attackHeld) {
+      releaseAttack(player, time);
+    }
   }
   updateAttackState(player, time);
 }

@@ -119,6 +119,40 @@ body,
   letter-spacing: 0.12em;
 }
 
+#hud .throw-cooldown {
+  --progress: 0;
+  position: relative;
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+}
+
+.hud-cluster-right .throw-cooldown {
+  margin-left: auto;
+}
+
+#hud .throw-cooldown-icon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.55;
+}
+
+#hud .throw-cooldown-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    rgba(255, 255, 255, 0.92) calc(var(--progress) * 360deg),
+    rgba(255, 255, 255, 0.14) 0
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+}
+
 #overlay {
   position: fixed;
   inset: 0;
@@ -681,18 +715,41 @@ button.ghost {
   margin-top: 12px;
 }
 
+#player-card-moves {
+  min-width: 0;
+}
+
 .move-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .move-grid button {
-  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 40px;
+  padding: 6px 4px;
   background: #243049;
   color: var(--text);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
+}
+
+.move-grid .move-label {
+  line-height: 1.1;
+}
+
+.move-grid .move-hint {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(237, 241, 247, 0.55);
+  line-height: 1.1;
 }
 
 .move-grid button.is-active {
@@ -703,6 +760,36 @@ button.ghost {
 .move-grid button[data-demo-move="slap"] {
   background: var(--accent);
   color: #1a0d08;
+}
+
+.move-grid button[data-demo-move="slap"] .move-hint {
+  color: rgba(26, 13, 8, 0.65);
+}
+
+.move-grid button[data-demo-move="runSlap"] {
+  background: #f59e42;
+  color: #1a0d08;
+}
+
+.move-grid button[data-demo-move="runSlap"] .move-hint {
+  color: rgba(26, 13, 8, 0.65);
+}
+
+.move-grid button[data-demo-move="throw"] {
+  background: #60a5fa;
+  color: #0b1424;
+}
+
+.move-grid button[data-demo-move="throw"] .move-hint {
+  color: rgba(11, 20, 36, 0.65);
+}
+
+.move-keyboard-hint {
+  margin: 8px 0 0;
+  font-size: 10px;
+  line-height: 1.3;
+  color: rgba(237, 241, 247, 0.58);
+  text-align: center;
 }
 
 .color-grid {
@@ -727,6 +814,60 @@ button.ghost {
   outline: 2px solid var(--text);
   outline-offset: 3px;
   border-color: rgba(255, 255, 255, 0.55);
+}
+
+.throwable-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.throwable-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 88px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: rgba(8, 12, 20, 0.55);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.throwable-swatch[data-selected="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.throwable-swatch-icon {
+  width: 48px;
+  height: 48px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  image-rendering: auto;
+}
+
+.throwable-swatch[data-throwable="sandal"] .throwable-swatch-icon {
+  background-image: url("/assets/sandal.png");
+}
+
+.throwable-swatch[data-throwable="stick"] .throwable-swatch-icon {
+  background-image: url("/assets/stick.png");
+}
+
+.throwable-swatch[data-throwable="pan"] .throwable-swatch-icon {
+  background-image: url("/assets/pan.png");
+}
+
+.throwable-swatch[data-throwable="bat"] .throwable-swatch-icon {
+  background-image: url("/assets/bat.png");
 }
 
 button.is-hit {
@@ -875,6 +1016,44 @@ button.is-hit {
   .lobby-character {
     min-height: min(280px, 42dvh);
   }
+
+  #player-card-moves {
+    max-height: min(148px, 26dvh);
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-right: 2px;
+  }
+
+  #player-card-moves .eyebrow {
+    margin-bottom: 6px;
+  }
+
+  .move-grid {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 5px;
+    width: max-content;
+    min-width: 100%;
+    padding-bottom: 2px;
+  }
+
+  .move-grid button {
+    flex: 0 0 auto;
+    min-width: 68px;
+    min-height: 34px;
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  .move-grid .move-hint {
+    font-size: 7px;
+  }
+
+  .move-keyboard-hint {
+    display: none;
+  }
 }
 
 @media (max-height: 520px) {
@@ -914,6 +1093,26 @@ button.is-hit {
   }
 
   .hint {
+    display: none;
+  }
+
+  #player-card-moves {
+    max-height: min(120px, 34dvh);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .move-grid {
+    gap: 4px;
+  }
+
+  .move-grid button {
+    min-height: 32px;
+    padding: 4px 3px;
+    font-size: 10px;
+  }
+
+  .move-keyboard-hint {
     display: none;
   }
 }
@@ -1000,7 +1199,7 @@ button.is-hit {
 .touch-action-row {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 12px;
 }
 
 button.touch-btn {
@@ -1039,7 +1238,8 @@ button.touch-btn span {
 
 button.touch-btn-jump,
 button.touch-btn-down,
-button.touch-btn-slap {
+button.touch-btn-slap,
+button.touch-btn-throw {
   font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1068,15 +1268,30 @@ button.touch-btn-slap {
   color: rgba(255, 236, 224, 0.95);
 }
 
-button.touch-btn.is-pressed {
-  opacity: 0.95;
-  background: rgba(237, 241, 247, 0.22);
-  transform: scale(0.96);
+button.touch-btn-throw {
+  width: 72px;
+  min-width: 72px;
+  height: 72px;
+  opacity: 0.92;
+  background: rgba(96, 165, 250, 0.42);
+  border-color: rgba(96, 165, 250, 0.68);
+  color: rgba(235, 246, 255, 0.96);
 }
 
 button.touch-btn-slap.is-pressed {
   opacity: 1;
   background: rgba(255, 122, 69, 0.82);
+}
+
+button.touch-btn-throw.is-pressed {
+  opacity: 1;
+  background: rgba(96, 165, 250, 0.78);
+}
+
+button.touch-btn.is-pressed {
+  opacity: 0.95;
+  background: rgba(237, 241, 247, 0.22);
+  transform: scale(0.96);
 }
 
 html.has-touch #overlay[data-hidden="true"] ~ #touch-controls {

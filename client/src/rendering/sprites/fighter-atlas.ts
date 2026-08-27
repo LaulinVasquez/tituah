@@ -1,5 +1,7 @@
 import fighterSheetUrl from "../../../public/assets/characters/character-enhanced.png";
 import runningSheetUrl from "../../../public/assets/characters/running.png";
+import threeSlapsSheetUrl from "../../../public/assets/characters/three-slaps.png";
+import throwSheetUrl from "../../../public/assets/characters/throw.png";
 import { resolveAssetUrl } from "../../config/runtime.js";
 
 export type FighterAnimation =
@@ -11,6 +13,8 @@ export type FighterAnimation =
   | "slapCharge"
   | "slapAttack"
   | "slapRecovery"
+  | "runSlapCombo"
+  | "throw"
   | "hit"
   | "ko";
 
@@ -27,7 +31,20 @@ export interface FighterAnimationDefinition {
   frames: FighterFrame[];
   fps: number;
   loop: boolean;
-  sheet?: "fighter" | "running";
+  sheet?: "fighter" | "running" | "threeSlap" | "throw";
+}
+
+function buildRunSlapFrames(): FighterFrame[] {
+  // three-slaps.png alternates narrow anticipation poses (~235px) with wider slap
+  // poses (~350px). Crops follow sprite bounds, not a fixed grid.
+  return [
+    { x: 29, y: 304, width: 235, height: 236 },
+    { x: 300, y: 289, width: 366, height: 251, offsetX: 14 },
+    { x: 670, y: 302, width: 235, height: 238, offsetX: 3 },
+    { x: 924, y: 299, width: 350, height: 241, offsetX: 8 },
+    { x: 1295, y: 302, width: 235, height: 238, offsetX: 6 },
+    { x: 1542, y: 292, width: 348, height: 248, offsetX: 3 },
+  ];
 }
 
 // Explicit regions for character_enhanced.png. The source is not a grid, so the
@@ -112,6 +129,24 @@ export const FIGHTER_ANIMATIONS: Record<FighterAnimation, FighterAnimationDefini
       { x: 1359, y: 412, width: 166, height: 122 },
     ],
   },
+  runSlapCombo: {
+    fps: 14,
+    loop: false,
+    sheet: "threeSlap",
+    frames: buildRunSlapFrames(),
+  },
+  throw: {
+    fps: 10,
+    loop: false,
+    sheet: "throw",
+    // Uneven gaps between poses — crops follow content bounds, not a 1/3 grid.
+    // offsetX keeps feet on the container origin (crop center − foot centroid).
+    frames: [
+      { x: 86, y: 150, width: 519, height: 421, offsetX: 32 },
+      { x: 802, y: 132, width: 667, height: 439, offsetX: 104 },
+      { x: 1579, y: 146, width: 524, height: 426, offsetX: 7 },
+    ],
+  },
   hit: {
     fps: 10,
     loop: false,
@@ -135,4 +170,6 @@ export const FIGHTER_ANIMATIONS: Record<FighterAnimation, FighterAnimationDefini
 
 export const FIGHTER_SHEET_URL = resolveAssetUrl(fighterSheetUrl);
 export const RUNNING_SHEET_URL = resolveAssetUrl(runningSheetUrl);
+export const THREE_SLAPS_SHEET_URL = resolveAssetUrl(threeSlapsSheetUrl);
+export const THROW_SHEET_URL = resolveAssetUrl(throwSheetUrl);
 export const FIGHTER_VISUAL_HEIGHT = 106;

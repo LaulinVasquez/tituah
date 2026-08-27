@@ -1,20 +1,32 @@
 import { Assets, ColorMatrixFilter, Container, Rectangle, Sprite, Texture } from "pixi.js";
-import type { PlayerState } from "@tituah/shared";
+import { throwableIdFromAvatar, isThrowCharging, type PlayerState, type ThrowableId } from "@tituah/shared";
 import { appearanceFromAvatar, appearanceKey, colorHue, type FighterAppearance } from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
   FIGHTER_VISUAL_HEIGHT,
+  THREE_SLAPS_SHEET_URL,
   RUNNING_SHEET_URL,
+  THROW_SHEET_URL,
   type FighterAnimation,
   type FighterFrame,
 } from "./fighter-atlas.js";
+import {
+  SLAP_CHARGE_HAND_ANCHORS,
+  THROWABLE_OVERLAY_SCALE,
+  THROW_HAND_ANCHORS,
+  loadThrowableTextures,
+  throwableCrop,
+  type ThrowableOverlayFrame,
+} from "./throwable-atlas.js";
 
 const RUN_THRESHOLD = 24;
 const LAND_DURATION = 0.2;
 const HIT_DURATION = 0.38;
 const KO_DURATION = 0.65;
 const RESPAWN_HIDE_DURATION = 0.52;
+const THROW_CLIP_DURATION =
+  FIGHTER_ANIMATIONS.throw.frames.length / FIGHTER_ANIMATIONS.throw.fps;
 
 let texturePromise: Promise<Record<FighterAnimation, Texture[]>> | null = null;
 
@@ -23,10 +35,19 @@ function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
   texturePromise = Promise.all([
     Assets.load<Texture>(FIGHTER_SHEET_URL),
     Assets.load<Texture>(RUNNING_SHEET_URL),
-  ]).then(([fighterSheet, runningSheet]) => {
+    Assets.load<Texture>(THREE_SLAPS_SHEET_URL),
+    Assets.load<Texture>(THROW_SHEET_URL),
+  ]).then(([fighterSheet, runningSheet, threeSlapSheet, throwSheet]) => {
     const result = {} as Record<FighterAnimation, Texture[]>;
     for (const [name, animation] of Object.entries(FIGHTER_ANIMATIONS)) {
-      const sheet = animation.sheet === "running" ? runningSheet : fighterSheet;
+      const sheet =
+        animation.sheet === "running"
+          ? runningSheet
+          : animation.sheet === "threeSlap"
+            ? threeSlapSheet
+            : animation.sheet === "throw"
+              ? throwSheet
+              : fighterSheet;
       result[name as FighterAnimation] = animation.frames.map(
         (frame) => new Texture({
           source: sheet.source,
@@ -41,7 +62,9 @@ function loadTextures(): Promise<Record<FighterAnimation, Texture[]>> {
 
 export class FighterSprite extends Container {
   private readonly sprite = new Sprite();
+  private readonly throwableOverlay = new Sprite();
   private textures!: Record<FighterAnimation, Texture[]>;
+  private throwableTextures: Record<ThrowableId, Texture[]> | null = null;
   private animation: FighterAnimation = "idle";
   private animationStartedAt = 0;
   private wasGrounded = true;
@@ -55,19 +78,32 @@ export class FighterSprite extends Container {
   private colorKey = "";
   private appearanceCacheKey = "";
   private appearance: FighterAppearance | null = null;
+  private throwableId: ThrowableId = "sandal";
   private lastFrameIndex = -1;
   private lastFrameAnimation: FighterAnimation | null = null;
+  private lastActiveSlapStartedAt = -1;
+  /** `throwAnimUntil` value currently being played (or last finished). */
+  private throwAnimKey = 0;
+  /** Local playhead end — clip always runs from frame 0 for this duration. */
+  private throwPlayEndsAt = 0;
+  /** `throwChargeStartedAt` for the charge pose currently playing. */
+  private throwChargeKey = 0;
 
   constructor(readonly playerId: string) {
     super();
     this.addChild(this.sprite);
+    this.addChild(this.throwableOverlay);
     this.sprite.anchor.set(0.5, 1);
+    this.throwableOverlay.visible = false;
+    this.throwableOverlay.eventMode = "none";
     this.eventMode = "none";
     this.interactiveChildren = false;
   }
 
   async load(): Promise<void> {
-    this.textures = await loadTextures();
+    const [textures, throwables] = await Promise.all([loadTextures(), loadThrowableTextures()]);
+    this.textures = textures;
+    this.throwableTextures = throwables;
     this.sprite.texture = this.textures.idle[0];
   }
 
@@ -116,8 +152,13 @@ export class FighterSprite extends Container {
     this.animationStartedAt = 0;
     this.lastFrameIndex = -1;
     this.lastFrameAnimation = null;
+    this.lastActiveSlapStartedAt = -1;
+    this.throwAnimKey = 0;
+    this.throwPlayEndsAt = 0;
+    this.throwChargeKey = 0;
     this.wasGrounded = true;
     this.animation = "idle";
+    this.throwableOverlay.visible = false;
     this.visible = true;
     this.alpha = 1;
     this.rotation = 0;
@@ -129,8 +170,38 @@ export class FighterSprite extends Container {
       this.visible = false;
       return;
     }
-    const next = this.chooseAnimation(player, time);
-    this.setAnimation(next, time);
+
+    const chargingThrow = isThrowCharging(player);
+    const throwing = this.syncThrowRelease(player, time, chargingThrow);
+    const next = throwing
+      ? "throw"
+      : chargingThrow
+        ? "slapCharge"
+        : this.chooseAnimation(player, time);
+
+    if (player.attackState.type === "combo") {
+      this.setAnimation("runSlapCombo", player.attackState.startedAt, true);
+    } else if (player.attackState.type === "active") {
+      const startedAt = player.attackState.startedAt;
+      this.setAnimation("slapAttack", startedAt, startedAt !== this.lastActiveSlapStartedAt);
+      this.lastActiveSlapStartedAt = startedAt;
+    } else if (chargingThrow) {
+      this.lastActiveSlapStartedAt = -1;
+      const startedAt = player.throwChargeStartedAt || time;
+      const restart = this.animation !== "slapCharge" || this.throwChargeKey !== startedAt;
+      this.throwChargeKey = startedAt;
+      this.setAnimation("slapCharge", startedAt, restart);
+    } else if (throwing) {
+      this.lastActiveSlapStartedAt = -1;
+      this.throwChargeKey = 0;
+      // Animation start time is owned by syncThrowRelease.
+    } else {
+      this.lastActiveSlapStartedAt = -1;
+      this.throwChargeKey = 0;
+      // Only force-restart when leaving throw; never reset slapCharge every frame.
+      this.setAnimation(next, time, this.animation === "throw");
+    }
+
     const frameIndex = this.frameIndex(time);
     const definition = FIGHTER_ANIMATIONS[this.animation];
     const frame = definition.frames[frameIndex] ?? definition.frames[0];
@@ -138,9 +209,11 @@ export class FighterSprite extends Container {
 
     this.syncAppearance(player);
     this.setFrame(frameIndex, frame, scale, player.facing);
+    this.syncThrowableOverlay(frameIndex, scale, player.facing, chargingThrow);
     this.applyHitMotion(time);
     this.zIndex = player.position.y
-      + (player.attackState.type === "active" ? 1_000 : 0)
+      + (player.attackState.type === "active" || player.attackState.type === "combo" ? 1_000 : 0)
+      + (chargingThrow || throwing ? 1_050 : 0)
       + (time < this.hitUntil ? 1_100 : 0);
     this.alpha = player.invulnerableUntil > time && Math.floor(time * 12) % 2 === 0 ? 0.35 : 1;
     this.visible = time >= this.hiddenUntil
@@ -148,9 +221,49 @@ export class FighterSprite extends Container {
     this.wasGrounded = player.grounded;
   }
 
+  /**
+   * Release plays the 3-frame throw clip once from frame 0.
+   * Charge uses slapCharge separately (see update).
+   */
+  private syncThrowRelease(
+    player: PlayerState,
+    time: number,
+    chargingThrow: boolean,
+  ): boolean {
+    const until = player.throwAnimUntil ?? 0;
+
+    if (chargingThrow) {
+      this.throwPlayEndsAt = 0;
+      return false;
+    }
+
+    // New release — always start from frame 0 at the current render time.
+    if (until > 0 && until !== this.throwAnimKey) {
+      this.throwAnimKey = until;
+      this.throwPlayEndsAt = time + THROW_CLIP_DURATION;
+      this.setAnimation("throw", time, true);
+      return true;
+    }
+
+    // Finish the in-progress clip; do not re-enter for the same throwAnimUntil.
+    if (this.throwPlayEndsAt > 0) {
+      if (time < this.throwPlayEndsAt) {
+        if (this.animation !== "throw") {
+          const startedAt = this.throwPlayEndsAt - THROW_CLIP_DURATION;
+          this.setAnimation("throw", startedAt, true);
+        }
+        return true;
+      }
+      this.throwPlayEndsAt = 0;
+    }
+
+    return false;
+  }
+
   private chooseAnimation(player: PlayerState, time: number): FighterAnimation {
     if (this.koHoldFrame || time < this.koUntil) return "ko";
     if (time < this.hitUntil) return "hit";
+    if (player.attackState.type === "combo") return "runSlapCombo";
     if (player.attackState.type === "charging") return "slapCharge";
     if (player.attackState.type === "active") return "slapAttack";
     if (player.attackState.type === "recovery") return "slapRecovery";
@@ -192,11 +305,61 @@ export class FighterSprite extends Container {
     this.setColorVariant(this.appearance?.color ?? "orange");
   }
 
+  private syncThrowableOverlay(
+    frameIndex: number,
+    scale: number,
+    facing: 1 | -1,
+    chargingThrow: boolean,
+  ): void {
+    if (!this.throwableTextures) {
+      this.throwableOverlay.visible = false;
+      return;
+    }
+
+    if (chargingThrow && this.animation === "slapCharge") {
+      // Snap per charge frame (no lerp) so the item jumps with the hand poses.
+      const hand = SLAP_CHARGE_HAND_ANCHORS[frameIndex] ?? SLAP_CHARGE_HAND_ANCHORS[0]!;
+      const crop = throwableCrop(this.throwableId, 0);
+      // Match throw overlay world size (slap-charge frames are much smaller in the sheet,
+      // so using this frame's scale would make the item look huge).
+      const throwScale = FIGHTER_VISUAL_HEIGHT / FIGHTER_ANIMATIONS.throw.frames[0].height;
+      const overlayScale = throwScale * THROWABLE_OVERLAY_SCALE;
+      this.throwableOverlay.texture = this.throwableTextures[this.throwableId][0];
+      this.throwableOverlay.anchor.set(crop.gripX, crop.gripY);
+      this.throwableOverlay.scale.set(overlayScale * facing, overlayScale);
+      this.throwableOverlay.position.set(
+        this.sprite.position.x + hand.offsetX * scale * facing,
+        this.sprite.position.y + hand.offsetY * scale,
+      );
+      this.throwableOverlay.visible = true;
+      return;
+    }
+
+    if (this.animation === "throw" && frameIndex <= 1) {
+      const overlayFrame = frameIndex as ThrowableOverlayFrame;
+      const crop = throwableCrop(this.throwableId, overlayFrame);
+      const hand = THROW_HAND_ANCHORS[overlayFrame];
+      const overlayScale = scale * THROWABLE_OVERLAY_SCALE;
+      this.throwableOverlay.texture = this.throwableTextures[this.throwableId][overlayFrame];
+      this.throwableOverlay.anchor.set(crop.gripX, crop.gripY);
+      this.throwableOverlay.scale.set(overlayScale * facing, overlayScale);
+      this.throwableOverlay.position.set(
+        this.sprite.position.x + hand.offsetX * scale * facing,
+        this.sprite.position.y + hand.offsetY * scale,
+      );
+      this.throwableOverlay.visible = true;
+      return;
+    }
+
+    this.throwableOverlay.visible = false;
+  }
+
   private syncAppearance(player: PlayerState): void {
     const key = appearanceKey(player.avatar);
     if (key === this.appearanceCacheKey && this.appearance) return;
     this.appearanceCacheKey = key;
     this.appearance = appearanceFromAvatar(player.avatar);
+    this.throwableId = throwableIdFromAvatar(player.avatar?.throwableId);
     this.lastFrameIndex = -1;
     this.lastFrameAnimation = null;
   }

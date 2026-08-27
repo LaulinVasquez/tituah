@@ -3,9 +3,11 @@ import {
   DEFAULT_STAGE,
   parsePlayerCount,
   TICK_DT,
+  triggerRunningFourSlap,
   type FighterColor,
   type PlayerState,
   type ServerMessage,
+  type ThrowableId,
 } from "@tituah/shared";
 import { authService } from "../auth/auth-service.js";
 import { InputManager } from "../input/input-manager.js";
@@ -35,6 +37,7 @@ export class GameClient {
   private seekingMatch = false;
   private inRoom = false;
   private colorSave: Promise<void> = Promise.resolve();
+  private throwableSave: Promise<void> = Promise.resolve();
 
   async start(canvas: HTMLCanvasElement): Promise<void> {
     this.input = new InputManager(canvas);
@@ -77,6 +80,7 @@ export class GameClient {
     this.ui.onEditAvatar(() => void this.openEditor());
     this.ui.onSaveAvatar(() => void this.saveFighter());
     this.ui.onSelectColor((color) => this.persistColor(color));
+    this.ui.onSelectThrowable((throwableId) => this.persistThrowable(throwableId));
     this.ui.onBackFromEdit(() => this.ui.closeEditor());
 
     authService.start();
@@ -106,7 +110,10 @@ export class GameClient {
       console.error("Failed to start lobby fighter preview", error);
     });
     void audio.load();
-    window.addEventListener("pointerdown", () => void audio.unlock());
+    const unlockAudio = () => void audio.unlock();
+    window.addEventListener("pointerdown", unlockAudio);
+    window.addEventListener("touchstart", unlockAudio, { passive: true });
+    window.addEventListener("keydown", unlockAudio);
     if (!authService.user) this.ui.showAuth();
     this.loop();
   }
@@ -230,15 +237,21 @@ export class GameClient {
   private async saveFighter(): Promise<void> {
     const name = this.ui.displayName("edit");
     const color = this.ui.fighterColor();
+    const throwableId = this.ui.fighterThrowable();
     this.ui.rememberName(name);
     if (authService.profile) {
       authService.patchProfile({ displayName: name });
-      authService.patchAvatar({ ...authService.profile.avatar, baseAvatarId: color });
+      authService.patchAvatar({
+        ...authService.profile.avatar,
+        baseAvatarId: color,
+        throwableId,
+      });
     }
     this.ui.showMenu(authService.profile, undefined, this.guestSession());
     try {
       await this.colorSave.catch(() => undefined);
-      await authService.saveFighter({ displayName: name, baseAvatarId: color });
+      await this.throwableSave.catch(() => undefined);
+      await authService.saveFighter({ displayName: name, baseAvatarId: color, throwableId });
       void this.refreshPreview();
     } catch (error) {
       this.ui.showMenu(authService.profile, messageOf(error), this.guestSession());
@@ -251,6 +264,15 @@ export class GameClient {
       .catch(() => undefined)
       .then(async () => {
         await authService.persistAvatarColor(color);
+      });
+  }
+
+  private persistThrowable(throwableId: ThrowableId): void {
+    if (!authService.profile) return;
+    this.throwableSave = this.throwableSave
+      .catch(() => undefined)
+      .then(async () => {
+        await authService.persistThrowable(throwableId);
       });
   }
 
@@ -361,12 +383,16 @@ export class GameClient {
     }
   }
 
+  private frameCounter = 0;
+
   private loop = (): void => {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
 
     if (!document.hidden && this.state.playing()) {
+      this.frameCounter += 1;
+      this.input.beginFrame(this.frameCounter);
       this.accumulator += dt;
       while (this.accumulator >= TICK_DT) {
         this.step();
@@ -383,10 +409,25 @@ export class GameClient {
   private step(): void {
     if (!this.state.playing() || !this.state.localPlayerId) return;
 
-    const { input, attackEdge } = this.input.sample();
+    const edges = this.input.consumeEdges();
+    const input = this.input.sampleMovement();
+    input.runningSlap = edges.runningFourSlapEdge;
+
     this.socket.send({ type: "input", input });
-    if (attackEdge === "start") this.socket.send({ type: "attack_start" });
-    if (attackEdge === "release") this.socket.send({ type: "attack_release" });
+    if (edges.quickSlapPulse) {
+      this.socket.send({ type: "attack_start" });
+      this.socket.send({ type: "attack_release" });
+    } else if (!edges.runningFourSlapEdge) {
+      if (edges.attackEdge === "start") this.socket.send({ type: "attack_start" });
+      if (edges.attackEdge === "release") this.socket.send({ type: "attack_release" });
+    }
+    if (edges.quickThrowPulse) {
+      this.socket.send({ type: "throw_start" });
+      this.socket.send({ type: "throw_release" });
+    } else {
+      if (edges.throwEdge === "start") this.socket.send({ type: "throw_start" });
+      if (edges.throwEdge === "release") this.socket.send({ type: "throw_release" });
+    }
 
     this.localTime += TICK_DT;
     const base =
@@ -396,7 +437,11 @@ export class GameClient {
     if (authService.profile) {
       base.avatar = authService.profile.avatar;
     }
-    const predicted = this.prediction.apply(clonePlayerState(base), input, this.localTime);
+    const predicted = clonePlayerState(base);
+    const projectiles = this.state.snapshot?.projectiles ?? [];
+    // Throw charge follows throwHeld exactly like slap follows attackHeld (via syncThrowFromInput).
+    if (edges.runningFourSlapEdge) triggerRunningFourSlap(predicted, this.localTime);
+    this.prediction.apply(predicted, input, this.localTime, projectiles);
     this.state.predicted = predicted;
     sfx.observe(predicted);
   }
@@ -415,8 +460,9 @@ export class GameClient {
     }
 
     const time = this.state.snapshot?.time ?? this.localTime;
-    this.renderer.render(players, this.localTime || time);
+    this.renderer.render(players, this.state.snapshot?.projectiles ?? [], this.localTime || time);
     this.ui.updateHud(this.state);
+    this.ui.updateThrowCooldown(this.state, this.localTime || time);
   }
 }
 

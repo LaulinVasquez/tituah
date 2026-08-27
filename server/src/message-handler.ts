@@ -40,6 +40,18 @@ export class MessageHandler {
       case "attack_release":
         this.matches.releaseAttack(session);
         break;
+      case "throw_start":
+        this.matches.throwStart(session);
+        break;
+      case "throw_release":
+        this.matches.throwRelease(session);
+        break;
+      case "throw":
+        this.matches.throw(session);
+        break;
+      case "running_four_slap":
+        this.matches.runningFourSlap(session);
+        break;
       case "ready":
         this.matches.ready(session);
         break;

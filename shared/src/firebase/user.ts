@@ -17,6 +17,7 @@ export interface UserStats {
 
 export interface AvatarConfiguration {
   baseAvatarId: string;
+  throwableId: string;
   headAccessoryId: string | null;
   faceAccessoryId: string | null;
   bodyAccessoryId: string | null;
@@ -57,6 +58,7 @@ export const DEFAULT_STATS: UserStats = {
 
 export const DEFAULT_AVATAR: AvatarConfiguration = {
   baseAvatarId: "orange",
+  throwableId: "sandal",
   headAccessoryId: null,
   faceAccessoryId: null,
   bodyAccessoryId: null,

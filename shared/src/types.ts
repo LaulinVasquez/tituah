@@ -37,6 +37,11 @@ export type AttackState =
       type: "recovery";
       attackId: string;
       endsAt: number;
+    }
+  | {
+      type: "combo";
+      attackId: string;
+      startedAt: number;
     };
 
 export interface AttackHitboxDef {
@@ -65,6 +70,8 @@ export interface AttackDefinition {
 
 export interface ProjectileAttackDef {
   speed: number;
+  /** Fully-charged throw speed; defaults to `speed` when omitted. */
+  maxSpeed?: number;
   radius: number;
   lifetime: number;
 }
@@ -89,6 +96,11 @@ export interface PlayerState {
   health: number;
   damagePercent: number;
   attackState: AttackState;
+  throwCooldownEndsAt: number;
+  /** Client plays throw pose while `time < throwAnimUntil`. */
+  throwAnimUntil: number;
+  /** > 0 while holding throw charge; 0 when not charging. */
+  throwChargeStartedAt: number;
   lives: number;
   lastInputSeq: number;
   spawnIndex: number;
@@ -100,6 +112,8 @@ export interface Projectile {
   id: string;
   ownerId: string;
   attackId: string;
+  /** Visual / carried throwable for this projectile (`sandal` default). */
+  throwableId: string;
   position: Vec2;
   velocity: Vec2;
   damage: number;
@@ -138,7 +152,10 @@ export interface PlayerInput {
   down: boolean;
   jump: boolean;
   attackHeld: boolean;
+  /** Hold-to-charge throw — same rising/falling edge model as `attackHeld`. */
+  throwHeld: boolean;
   aimAngle: number;
+  runningSlap?: boolean;
 }
 
 export interface MatchSnapshot {
@@ -187,6 +204,7 @@ export function emptyInput(sequence = 0): PlayerInput {
     down: false,
     jump: false,
     attackHeld: false,
+    throwHeld: false,
     aimAngle: 0,
   };
 }
@@ -201,13 +219,16 @@ export function clonePlayerState(player: PlayerState): PlayerState {
     position: { ...player.position },
     velocity: { ...player.velocity },
     attackState: cloneAttackState(player.attackState),
-    avatar: { ...(player.avatar ?? emptyAvatar()) },
+    throwAnimUntil: player.throwAnimUntil ?? 0,
+    throwChargeStartedAt: player.throwChargeStartedAt ?? 0,
+    avatar: { ...emptyAvatar(), ...(player.avatar ?? {}) },
   };
 }
 
 export function cloneProjectile(projectile: Projectile): Projectile {
   return {
     ...projectile,
+    throwableId: projectile.throwableId || "sandal",
     position: { ...projectile.position },
     velocity: { ...projectile.velocity },
   };

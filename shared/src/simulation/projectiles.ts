@@ -1,10 +1,50 @@
+import { FLIPFLOP_THROW_ID } from "../data/attacks.js";
 import { aabbOverlap } from "../math.js";
 import type { HitEvent, PlayerState, Projectile } from "../types.js";
 import { getBodyAABB } from "./combat.js";
 
+export interface BlastBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+export function isProjectileInBlastZone(projectile: Projectile, blast: BlastBounds): boolean {
+  const { x, y } = projectile.position;
+  return x >= blast.left && x <= blast.right && y >= blast.top && y <= blast.bottom;
+}
+
+export function playerHasActiveFlipflop(projectiles: readonly Projectile[], playerId: string): boolean {
+  return projectiles.some(
+    (projectile) => projectile.ownerId === playerId && projectile.attackId === FLIPFLOP_THROW_ID,
+  );
+}
+
+export function findActiveFlipflop(
+  projectiles: readonly Projectile[],
+  playerId: string,
+): Projectile | undefined {
+  return projectiles.find(
+    (projectile) => projectile.ownerId === playerId && projectile.attackId === FLIPFLOP_THROW_ID,
+  );
+}
+
+/** 0 when the sandal just left the hand, 1 when it reaches the blast-zone edge. */
+export function flipflopThrowReloadProgress(projectile: Projectile, blast: BlastBounds): number {
+  const centerX = (blast.left + blast.right) * 0.5;
+  const centerY = (blast.top + blast.bottom) * 0.5;
+  const halfWidth = Math.max(1, (blast.right - blast.left) * 0.5);
+  const halfHeight = Math.max(1, (blast.bottom - blast.top) * 0.5);
+  const dx = Math.abs(projectile.position.x - centerX) / halfWidth;
+  const dy = Math.abs(projectile.position.y - centerY) / halfHeight;
+  return Math.min(1, Math.max(dx, dy, 0));
+}
+
 export function createProjectile(partial: Omit<Projectile, "age"> & { age?: number }): Projectile {
   return {
     ...partial,
+    throwableId: partial.throwableId || "sandal",
     age: partial.age ?? 0,
   };
 }

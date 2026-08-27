@@ -3,15 +3,29 @@ import { emptyInput, type PlayerInput } from "@tituah/shared";
 export interface SampledInput {
   input: PlayerInput;
   attackEdge: "start" | "release" | null;
+  throwEdge: "start" | "release" | null;
+  runningFourSlapEdge: boolean;
+  quickSlapPulse: boolean;
+  quickThrowPulse: boolean;
 }
 
-type VirtualAction = "left" | "right" | "down" | "up" | "jump" | "attack";
+type VirtualAction = "left" | "right" | "down" | "up" | "jump" | "attack" | "throw";
 type PointerBinding = { kind: "button"; action: VirtualAction } | { kind: "stick" };
 
-const VIRTUAL_ACTIONS = new Set<VirtualAction>(["left", "right", "down", "up", "jump", "attack"]);
+const VIRTUAL_ACTIONS = new Set<VirtualAction>(["left", "right", "down", "up", "jump", "attack", "throw"]);
 const STICK_MOVE = 0.28;
 const STICK_JUMP = 0.38;
 const STICK_DOWN = 0.42;
+const DOUBLE_TAP_WINDOW_MS = 400;
+const CHARGE_HOLD_MS = 220;
+
+const EMPTY_EDGES: Omit<SampledInput, "input"> = {
+  attackEdge: null,
+  throwEdge: null,
+  runningFourSlapEdge: false,
+  quickSlapPulse: false,
+  quickThrowPulse: false,
+};
 
 export class InputManager {
   private sequence = 0;
@@ -20,6 +34,19 @@ export class InputManager {
   private readonly pointers = new Map<number, PointerBinding>();
   private aimAngle = 0;
   private previousAttackHeld = false;
+  private throwHeld = false;
+  private previousThrowHeld = false;
+  private throwPressStartedAt = 0;
+  private throwChargeStarted = false;
+  private latchedQuickThrow = false;
+  private attackPressStartedAt = 0;
+  private attackTapTimes: number[] = [];
+  private latchedCombo: "running" | null = null;
+  private chargeStarted = false;
+  private latchedQuickSlap = false;
+  private frameToken = 0;
+  private lastFrameToken = -1;
+  private edgesConsumed = false;
 
   private pointerDown = false;
   private stickX = 0;
@@ -52,35 +79,136 @@ export class InputManager {
     }
   }
 
-  sample(): SampledInput {
-    const attackHeld =
-      this.pointerDown ||
-      this.virtual.has("attack") ||
-      this.keys.has("z") ||
-      this.keys.has("j") ||
-      this.keys.has("k");
+  /** Call once per visual frame before simulation steps. */
+  beginFrame(frameToken: number): void {
+    if (frameToken === this.lastFrameToken) return;
+    this.lastFrameToken = frameToken;
+    this.edgesConsumed = false;
+
+    const now = performance.now();
+    const attackHeld = this.isAttackHeld();
+    this.attackTapTimes = this.attackTapTimes.filter((tap) => now - tap <= DOUBLE_TAP_WINDOW_MS);
+    if (
+      !attackHeld
+      && this.attackTapTimes.length === 1
+      && now - this.attackTapTimes[0] >= DOUBLE_TAP_WINDOW_MS
+    ) {
+      this.latchedQuickSlap = true;
+      this.attackTapTimes = [];
+    }
+  }
+
+  /** Returns edge flags once per frame (first simulation step only). */
+  consumeEdges(): Omit<SampledInput, "input"> {
+    if (this.edgesConsumed) return EMPTY_EDGES;
+    this.edgesConsumed = true;
+
+    const now = performance.now();
+    const attackHeld = this.isAttackHeld();
+
+    const runningFourSlapEdge = this.latchedCombo === "running";
+    if (this.latchedCombo) {
+      this.latchedCombo = null;
+      this.chargeStarted = false;
+      this.attackTapTimes = [];
+    }
+
+    const quickSlapPulse = this.latchedQuickSlap;
+    this.latchedQuickSlap = false;
+
     let attackEdge: SampledInput["attackEdge"] = null;
-    if (attackHeld && !this.previousAttackHeld) attackEdge = "start";
-    if (!attackHeld && this.previousAttackHeld) attackEdge = "release";
+
+    if (attackHeld && !this.previousAttackHeld) {
+      this.attackPressStartedAt = now;
+    }
+
+    if (
+      attackHeld
+      && !this.chargeStarted
+      && !runningFourSlapEdge
+      && this.attackTapTimes.length === 0
+      && now - this.attackPressStartedAt >= CHARGE_HOLD_MS
+    ) {
+      attackEdge = "start";
+      this.chargeStarted = true;
+    }
+
+    if (!attackHeld && this.previousAttackHeld) {
+      if (this.chargeStarted) {
+        attackEdge = "release";
+      }
+      this.chargeStarted = false;
+      this.attackPressStartedAt = 0;
+    }
+
     this.previousAttackHeld = attackHeld;
 
+    this.throwHeld = this.virtual.has("throw") || this.keys.has("j");
+    let throwEdge: SampledInput["throwEdge"] = null;
+    let quickThrowPulse = this.latchedQuickThrow;
+    this.latchedQuickThrow = false;
+
+    if (this.throwHeld && !this.previousThrowHeld) {
+      this.throwPressStartedAt = now;
+    }
+
+    if (
+      this.throwHeld
+      && !this.throwChargeStarted
+      && now - this.throwPressStartedAt >= CHARGE_HOLD_MS
+    ) {
+      throwEdge = "start";
+      this.throwChargeStarted = true;
+    }
+
+    if (!this.throwHeld && this.previousThrowHeld) {
+      if (this.throwChargeStarted) {
+        throwEdge = "release";
+      } else if (now - this.throwPressStartedAt < CHARGE_HOLD_MS) {
+        // Quick tap → base-power throw.
+        quickThrowPulse = true;
+      }
+      this.throwChargeStarted = false;
+      this.throwPressStartedAt = 0;
+    }
+
+    this.previousThrowHeld = this.throwHeld;
+
     return {
-      input: {
-        sequence: ++this.sequence,
-        left: this.keys.has("a") || this.keys.has("arrowleft") || this.virtual.has("left"),
-        right: this.keys.has("d") || this.keys.has("arrowright") || this.virtual.has("right"),
-        down: this.keys.has("s") || this.keys.has("arrowdown") || this.virtual.has("down"),
-        jump:
-          this.keys.has(" ") ||
-          this.keys.has("w") ||
-          this.keys.has("arrowup") ||
-          this.virtual.has("jump") ||
-          this.virtual.has("up"),
-        attackHeld,
-        aimAngle: this.aimAngle,
-      },
       attackEdge,
+      throwEdge,
+      runningFourSlapEdge,
+      quickSlapPulse,
+      quickThrowPulse,
     };
+  }
+
+  sampleMovement(): PlayerInput {
+    return {
+      sequence: ++this.sequence,
+      left: this.keys.has("a") || this.keys.has("arrowleft") || this.virtual.has("left"),
+      right: this.keys.has("d") || this.keys.has("arrowright") || this.virtual.has("right"),
+      down: this.keys.has("s") || this.keys.has("arrowdown") || this.virtual.has("down"),
+      jump:
+        this.keys.has(" ")
+        || this.keys.has("w")
+        || this.keys.has("arrowup")
+        || this.virtual.has("jump")
+        || this.virtual.has("up"),
+      attackHeld: this.isAttackHeld(),
+      throwHeld: this.virtual.has("throw") || this.keys.has("j"),
+      aimAngle: this.aimAngle,
+      runningSlap: false,
+    };
+  }
+
+  /** Convenience for single-step callers (lobby preview). */
+  sample(): SampledInput {
+    this.beginFrame(this.frameToken += 1);
+    const edges = this.consumeEdges();
+    const input = this.sampleMovement();
+    input.runningSlap = edges.runningFourSlapEdge;
+    return { input, ...edges };
   }
 
   peek(): PlayerInput {
@@ -90,17 +218,13 @@ export class InputManager {
       right: this.keys.has("d") || this.keys.has("arrowright") || this.virtual.has("right"),
       down: this.keys.has("s") || this.keys.has("arrowdown") || this.virtual.has("down"),
       jump:
-        this.keys.has(" ") ||
-        this.keys.has("w") ||
-        this.keys.has("arrowup") ||
-        this.virtual.has("jump") ||
-        this.virtual.has("up"),
-      attackHeld:
-        this.pointerDown ||
-        this.virtual.has("attack") ||
-        this.keys.has("z") ||
-        this.keys.has("j") ||
-        this.keys.has("k"),
+        this.keys.has(" ")
+        || this.keys.has("w")
+        || this.keys.has("arrowup")
+        || this.virtual.has("jump")
+        || this.virtual.has("up"),
+      attackHeld: this.isAttackHeld(),
+      throwHeld: this.virtual.has("throw") || this.keys.has("j"),
       aimAngle: this.aimAngle,
     };
   }
@@ -124,10 +248,28 @@ export class InputManager {
     this.stickEl?.removeEventListener("pointerdown", this.onStickDown);
   }
 
+  private isAttackHeld(): boolean {
+    return this.pointerDown || this.virtual.has("attack") || this.keys.has("h");
+  }
+
+  private registerAttackTap(now: number): void {
+    this.attackTapTimes = this.attackTapTimes.filter((tap) => now - tap <= DOUBLE_TAP_WINDOW_MS);
+    this.attackTapTimes.push(now);
+    if (this.attackTapTimes.length >= 2) {
+      if (this.isMovingHorizontally()) {
+        this.latchedCombo = "running";
+      }
+      this.attackTapTimes = [];
+      this.chargeStarted = false;
+      this.latchedQuickSlap = false;
+    }
+  }
+
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return;
     if (event.pointerType === "touch") return;
     this.pointerDown = true;
+    this.registerAttackTap(performance.now());
     this.updateAim(event);
   };
 
@@ -150,6 +292,9 @@ export class InputManager {
     event.preventDefault();
     event.stopPropagation();
     this.pointers.set(event.pointerId, { kind: "button", action });
+    if (action === "attack") {
+      this.registerAttackTap(performance.now());
+    }
     this.syncVirtual();
   };
 
@@ -172,7 +317,11 @@ export class InputManager {
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    this.keys.add(event.key.toLowerCase());
+    const key = event.key.toLowerCase();
+    this.keys.add(key);
+    if (key === "h" && !event.repeat) {
+      this.registerAttackTap(performance.now());
+    }
     if (event.key === " " || event.key.startsWith("Arrow")) event.preventDefault();
   };
 
@@ -190,6 +339,18 @@ export class InputManager {
     this.pointers.clear();
     this.pointerDown = false;
     this.previousAttackHeld = false;
+    this.throwHeld = false;
+    this.previousThrowHeld = false;
+    this.throwPressStartedAt = 0;
+    this.throwChargeStarted = false;
+    this.latchedQuickThrow = false;
+    this.attackPressStartedAt = 0;
+    this.attackTapTimes = [];
+    this.latchedCombo = null;
+    this.chargeStarted = false;
+    this.latchedQuickSlap = false;
+    this.edgesConsumed = false;
+    this.lastFrameToken = -1;
     this.resetStick();
     this.syncPressed();
   };
@@ -247,6 +408,18 @@ export class InputManager {
     const x = ((event.clientX - rect.left) / rect.width) * this.canvas.width;
     const y = ((event.clientY - rect.top) / rect.height) * this.canvas.height;
     this.aimAngle = Math.atan2(y - this.canvas.height / 2, x - this.canvas.width / 2);
+  }
+
+  private isMovingHorizontally(): boolean {
+    return (
+      this.keys.has("a")
+      || this.keys.has("d")
+      || this.keys.has("arrowleft")
+      || this.keys.has("arrowright")
+      || this.virtual.has("left")
+      || this.virtual.has("right")
+      || Math.abs(this.stickX) >= STICK_MOVE
+    );
   }
 }
 

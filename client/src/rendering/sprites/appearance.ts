@@ -1,4 +1,11 @@
-import { emptyAvatar, fighterColorFromId, type AvatarConfiguration, type FighterColor } from "@tituah/shared";
+import {
+  emptyAvatar,
+  fighterColorFromId,
+  throwableIdFromAvatar,
+  type AvatarConfiguration,
+  type FighterColor,
+  type ThrowableId,
+} from "@tituah/shared";
 import type { FighterFrame } from "./fighter-atlas.js";
 
 export type { FighterColor };
@@ -14,6 +21,7 @@ export interface AccessorySprite {
 
 export interface FighterAppearance {
   color: FighterColor;
+  throwableId: ThrowableId;
   accessories: AccessorySprite[];
 }
 
@@ -27,13 +35,14 @@ const COLOR_HUES: Record<FighterColor, number | null> = {
 };
 
 export function appearanceKey(avatar: AvatarConfiguration | undefined): string {
-  return fighterColorFromId(avatar?.baseAvatarId);
+  return `${fighterColorFromId(avatar?.baseAvatarId)}:${throwableIdFromAvatar(avatar?.throwableId)}`;
 }
 
 export function appearanceFromAvatar(avatar: AvatarConfiguration | undefined): FighterAppearance {
   const config = avatar ?? emptyAvatar();
   return {
     color: fighterColorFromId(config.baseAvatarId),
+    throwableId: throwableIdFromAvatar(config.throwableId),
     accessories: [],
   };
 }

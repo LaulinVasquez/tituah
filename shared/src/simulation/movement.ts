@@ -23,7 +23,9 @@ export function applyMovement(
   const wish =
     (input.right ? 1 : 0) - (input.left ? 1 : 0);
 
-  if (wish !== 0) {
+  if (player.attackState.type === "combo") {
+    player.velocity.x = MOVE_SPEED * player.facing * 0.88;
+  } else if (wish !== 0) {
     player.facing = wish > 0 ? 1 : -1;
     const accel = player.grounded ? GROUND_ACCEL : AIR_ACCEL;
     player.velocity.x += wish * accel * dt;

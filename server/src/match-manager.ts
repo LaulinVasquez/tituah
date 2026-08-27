@@ -138,6 +138,30 @@ export class MatchManager {
     match.releaseAttack(session.playerId);
   }
 
+  throwStart(session: Session): void {
+    const match = this.getSessionMatch(session);
+    if (!match || !session.playerId) return;
+    match.throwStart(session.playerId);
+  }
+
+  throwRelease(session: Session): void {
+    const match = this.getSessionMatch(session);
+    if (!match || !session.playerId) return;
+    match.throwRelease(session.playerId);
+  }
+
+  throw(session: Session): void {
+    const match = this.getSessionMatch(session);
+    if (!match || !session.playerId) return;
+    match.throw(session.playerId);
+  }
+
+  runningFourSlap(session: Session): void {
+    const match = this.getSessionMatch(session);
+    if (!match || !session.playerId) return;
+    match.runningFourSlap(session.playerId);
+  }
+
   ready(session: Session): void {
     const match = this.getSessionMatch(session);
     if (!match || !session.playerId) return;
