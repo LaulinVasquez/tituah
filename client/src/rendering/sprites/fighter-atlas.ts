@@ -166,7 +166,7 @@ export const FIGHTER_ANIMATIONS: Record<FighterAnimation, FighterAnimationDefini
 };
 
 export const FIGHTER_SHEET_URL = resolveAssetUrl("/assets/characters/character-enhanced.png");
-export const RUNNING_SHEET_URL = resolveAssetUrl("/assets/characters/running.png");
-export const THREE_SLAPS_SHEET_URL = resolveAssetUrl("/assets/characters/three-slaps.png");
-export const THROW_SHEET_URL = resolveAssetUrl("/assets/characters/throw.png");
+export const RUNNING_SHEET_URL = resolveAssetUrl("/assets/characters/moves/running.png");
+export const THREE_SLAPS_SHEET_URL = resolveAssetUrl("/assets/characters/moves/three-slaps.png");
+export const THROW_SHEET_URL = resolveAssetUrl("/assets/characters/moves/throw.png");
 export const FIGHTER_VISUAL_HEIGHT = 106;

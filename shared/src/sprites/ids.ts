@@ -1,19 +1,55 @@
 export const FIGHTER_SHEET_ID = "character-enhanced";
 
-export const FIGHTER_COLORS = ["orange", "red", "blue", "green", "yellow", "purple"] as const;
+/** Sprite-sheet order in `variants.png` (2×6, row-major). */
+export const FIGHTER_COLORS = [
+  "red",
+  "blue",
+  "green",
+  "yellow",
+  "purple",
+  "orange",
+  "cyan",
+  "pink",
+  "lime",
+  "teal",
+  "white",
+  "black",
+] as const;
 
 export type FighterColor = (typeof FIGHTER_COLORS)[number];
 
 export type FighterColorId = "base_01" | FighterColor;
 
 export const FIGHTER_COLOR_HEX: Record<FighterColor, string> = {
-  orange: "#ff7a45",
   red: "#e4453a",
   blue: "#5b9dff",
   green: "#3ecf8e",
   yellow: "#e8c44a",
   purple: "#a56bff",
+  orange: "#ff7a45",
+  cyan: "#4ecbff",
+  pink: "#ff6bb5",
+  lime: "#9dff4a",
+  teal: "#2dd4bf",
+  white: "#f2f4f8",
+  black: "#2a2f3a",
 };
+
+/** Cup centers (%) over `eggshelve-tray.png` (2×6, matching `FIGHTER_COLORS`). */
+export const FIGHTER_VARIANT_CUPS: ReadonlyArray<{ readonly x: number; readonly y: number }> = [
+  { x: 13, y: 35 },
+  { x: 28.5, y: 35 },
+  { x: 44, y: 35 },
+  { x: 56, y: 35 },
+  { x: 71.5, y: 35 },
+  { x: 87, y: 35 },
+  { x: 11.5, y: 71 },
+  { x: 27.5, y: 71 },
+  { x: 43.5, y: 71 },
+  { x: 56.5, y: 71 },
+  { x: 72.5, y: 71 },
+  { x: 88.5, y: 71 },
+];
 
 export function isFighterColor(value: string | null | undefined): value is FighterColor {
   return value != null && (FIGHTER_COLORS as readonly string[]).includes(value);

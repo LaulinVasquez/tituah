@@ -394,6 +394,59 @@ h2 {
   margin: 0 0 12px;
 }
 
+.edit-name-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: inherit;
+  color: inherit;
+  cursor: text;
+}
+
+.edit-name-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.edit-name-field:focus-within .edit-name-icon {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.edit-name-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.edit-name-field:focus-within .edit-name-title {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.edit-name-title:focus {
+  outline: none;
+}
+
+.edit-name-title::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
 .blurb,
 .hint {
   color: var(--muted);
@@ -954,6 +1007,45 @@ button.account-status[aria-expanded="true"] {
   margin: 0 0 16px;
 }
 
+.color-grid.egg-shelf {
+  display: block;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1254 / 620;
+  margin: 4px 0 18px;
+  padding: 0;
+  border-radius: 12px;
+  background: url("/assets/characters/eggshelve/eggshelve-tray.png") center / contain no-repeat;
+  background-color: transparent;
+  overflow: visible;
+}
+
+/* Middle divider: in front of back-row eggs, behind front-row eggs */
+.color-grid.egg-shelf::before {
+  content: "";
+  position: absolute;
+  left: 1.003%;
+  top: 9%;
+  width: 97.036%;
+  height: 64.911%;
+  background: url("/assets/characters/eggshelve/eggshelve-tray-backrow_overlay.png") center / 100% 100% no-repeat;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Front lip in front of variants so eggs read as inside the cups */
+.color-grid.egg-shelf::after {
+  content: "";
+  position: absolute;
+  left: 0.04%;
+  top: 24.24%;
+  width: 99.64%;
+  height: 67.17%;
+  background: url("/assets/characters/eggshelve/eggshelve-tray_front_overlay.png") center / 100% 100% no-repeat;
+  pointer-events: none;
+  z-index: 4;
+}
+
 .color-swatch {
   width: 100%;
   aspect-ratio: 1;
@@ -965,10 +1057,78 @@ button.account-status[aria-expanded="true"] {
   color: transparent;
 }
 
+.egg-shelf .color-swatch {
+  /* variants.png cell ≈ 279×471 — keep natural tall proportions */
+  --egg-w: 16%;
+  --egg-anchor: -72%;
+  position: absolute;
+  left: var(--cup-x);
+  top: var(--cup-y);
+  width: var(--egg-w);
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 279 / 471;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: transparent;
+  transform: translate(-50%, var(--egg-anchor));
+  transition: transform 0.16s ease, filter 0.16s ease;
+  z-index: 1;
+}
+
+.egg-shelf .color-swatch:nth-child(n + 7) {
+  --egg-w: 18.5%;
+  z-index: 3;
+}
+
+.color-swatch-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-image: url("/assets/characters/variants.png");
+  background-repeat: no-repeat;
+  background-size: 600% 200%;
+  background-position: var(--variant-x) var(--variant-y);
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
+  pointer-events: none;
+}
+
 .color-swatch[data-selected="true"] {
   outline: 2px solid var(--text);
   outline-offset: 3px;
   border-color: rgba(255, 255, 255, 0.55);
+}
+
+.egg-shelf .color-swatch[data-selected="true"] {
+  outline: none;
+  border: none;
+  transform: translate(-50%, calc(var(--egg-anchor) - 4%)) scale(1.1);
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.55));
+}
+
+.egg-shelf .color-swatch:hover,
+.egg-shelf .color-swatch:focus-visible {
+  transform: translate(-50%, calc(var(--egg-anchor) - 2%)) scale(1.05);
+}
+
+.egg-shelf .color-swatch[data-selected="true"]:hover,
+.egg-shelf .color-swatch[data-selected="true"]:focus-visible {
+  transform: translate(-50%, calc(var(--egg-anchor) - 4%)) scale(1.1);
+}
+
+/* Keep back row behind middle divider; front row above it (still under front lip) */
+.egg-shelf .color-swatch:nth-child(-n + 6)[data-selected="true"],
+.egg-shelf .color-swatch:nth-child(-n + 6):hover,
+.egg-shelf .color-swatch:nth-child(-n + 6):focus-visible {
+  z-index: 1;
+}
+
+.egg-shelf .color-swatch:nth-child(n + 7)[data-selected="true"],
+.egg-shelf .color-swatch:nth-child(n + 7):hover,
+.egg-shelf .color-swatch:nth-child(n + 7):focus-visible {
+  z-index: 3;
 }
 
 .throwable-grid {

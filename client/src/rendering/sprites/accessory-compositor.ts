@@ -1,5 +1,5 @@
 import { Texture } from "pixi.js";
-import { colorHue, type AccessorySprite, type FighterColor } from "./appearance.js";
+import { colorCssFilter, type AccessorySprite, type FighterColor } from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
   FIGHTER_VISUAL_HEIGHT,
@@ -94,8 +94,8 @@ function compositeFrame(
   if (!ctx) throw new Error("Could not composite fighter accessories");
 
   ctx.imageSmoothingEnabled = false;
-  const hue = colorHue(color);
-  if (hue != null) ctx.filter = `hue-rotate(${hue}deg) saturate(120%)`;
+  const cssFilter = colorCssFilter(color);
+  if (cssFilter) ctx.filter = cssFilter;
   ctx.drawImage(
     drawable(sheet),
     frame.x,

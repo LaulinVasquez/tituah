@@ -395,14 +395,26 @@
               <h2 id="result-title">Winner</h2>
             </div>
             <div id="pane-edit" class="pane" hidden>
-              <p class="eyebrow">Fighter</p>
-              <h2>Edit</h2>
-              <label>
-                Display name
-                <input id="display-name" name="name" maxlength="24" placeholder="Fighter" autocomplete="name" />
+              <p class="eyebrow">Fighter name</p>
+              <label class="edit-name-field">
+                <svg class="edit-name-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"
+                  />
+                </svg>
+                <input
+                  id="display-name"
+                  class="edit-name-title"
+                  name="name"
+                  maxlength="24"
+                  placeholder="Fighter"
+                  autocomplete="name"
+                  aria-label="Fighter name"
+                />
               </label>
               <p class="stage-heading">Color</p>
-              <div id="color-grid" class="color-grid" role="radiogroup" aria-label="Fighter color"></div>
+              <div id="color-grid" class="color-grid egg-shelf" role="radiogroup" aria-label="Fighter color"></div>
               <p class="stage-heading">Throwable</p>
               <div id="throwable-grid" class="throwable-grid" role="radiogroup" aria-label="Throwable"></div>
               <p id="editor-hint" class="blurb" hidden></p>

@@ -1,6 +1,7 @@
 import {
   FIGHTER_COLOR_HEX,
   FIGHTER_COLORS,
+  FIGHTER_VARIANT_CUPS,
   THROWABLE_IDS,
   THROWABLE_LABELS,
   emptyAvatar,
@@ -916,6 +917,7 @@ export class Ui {
 
   private renderColorPicker(profile: UserProfile | null): void {
     this.colorGrid.replaceChildren();
+    this.colorGrid.classList.add("egg-shelf");
     if (!profile) {
       this.editorHint.hidden = false;
       this.editorHint.textContent = "Play as guest or log in to edit and save your fighter.";
@@ -926,16 +928,27 @@ export class Ui {
     this.editorHint.textContent = "";
     this.selectedColor = fighterColorFromId(profile.avatar.baseAvatarId);
 
-    for (const color of FIGHTER_COLORS) {
+    FIGHTER_COLORS.forEach((color, index) => {
+      const cup = FIGHTER_VARIANT_CUPS[index];
+      const col = index % 6;
+      const row = Math.floor(index / 6);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "color-swatch";
       button.dataset.color = color;
-      button.style.setProperty("--swatch", FIGHTER_COLOR_HEX[color]);
+      button.dataset.variant = String(index);
+      button.style.setProperty("--cup-x", `${cup.x}%`);
+      button.style.setProperty("--cup-y", `${cup.y}%`);
+      button.style.setProperty("--variant-x", `${(col / 5) * 100}%`);
+      button.style.setProperty("--variant-y", `${row * 100}%`);
       button.setAttribute("aria-label", color);
       button.title = color[0].toUpperCase() + color.slice(1);
+      const icon = document.createElement("span");
+      icon.className = "color-swatch-icon";
+      icon.setAttribute("aria-hidden", "true");
+      button.append(icon);
       this.colorGrid.append(button);
-    }
+    });
     this.syncColorButtons();
   }
 

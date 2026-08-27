@@ -5,7 +5,12 @@ import {
   type PlayerState,
   type ThrowableId,
 } from "@tituah/shared";
-import { appearanceFromAvatar, appearanceKey, colorHue, type FighterAppearance } from "./appearance.js";
+import {
+  appearanceFromAvatar,
+  appearanceKey,
+  colorVariantStyle,
+  type FighterAppearance,
+} from "./appearance.js";
 import {
   FIGHTER_ANIMATIONS,
   FIGHTER_SHEET_URL,
@@ -368,14 +373,15 @@ export class FighterSprite extends Container {
   private setColorVariant(color: NonNullable<FighterAppearance>["color"]): void {
     if (color === this.colorKey) return;
     this.colorKey = color;
-    const hue = colorHue(color);
-    if (hue == null) {
+    const style = colorVariantStyle(color);
+    if (style.hue == null && style.saturate == null && style.brightness == null) {
       this.sprite.filters = null;
       return;
     }
     const filter = new ColorMatrixFilter();
-    filter.hue(hue, false);
-    filter.saturate(0.28, true);
+    if (style.hue != null) filter.hue(style.hue, false);
+    if (style.saturate != null) filter.saturate(style.saturate, true);
+    if (style.brightness != null) filter.brightness(1 + style.brightness, true);
     this.sprite.filters = [filter];
   }
 
