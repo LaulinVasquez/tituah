@@ -53,8 +53,8 @@ export const FLIPFLOP_THROW: AttackDefinition = {
   baseDamage: 14,
   baseKnockback: 420,
   verticalKnockback: 220,
-  /** Short recovery after release — not tied to projectile lifetime. */
-  cooldown: 0.4,
+  /** Unused for throw gate — reload is “projectile left the playfield”. */
+  cooldown: 0,
   activeDuration: 0.01,
   hitbox: {
     width: 0,
@@ -66,7 +66,8 @@ export const FLIPFLOP_THROW: AttackDefinition = {
     speed: 920,
     maxSpeed: 1680,
     radius: 30,
-    lifetime: 2.4,
+    /** Failsafe only; normal despawn is leaving the blast/frame. */
+    lifetime: 6,
   },
 };
 

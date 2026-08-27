@@ -32,7 +32,6 @@ import {
   startThrowCharge,
   updateThrowCharge,
   cancelThrowCharge,
-  getThrowCooldownEndsAt,
   TICK_DT,
   updateAttackState,
   updateProjectiles,
@@ -439,8 +438,8 @@ export class Match {
     for (const ownerId of ownersBefore) {
       if (ownersAfter.has(ownerId)) continue;
       const player = this.players.get(ownerId);
-      // Early unlock if the item is gone before the timed cooldown ends.
-      if (player) player.throwCooldownEndsAt = Math.min(getThrowCooldownEndsAt(player), this.time);
+      // Projectile left the frame — throw is available again (no timed reload).
+      if (player) player.throwCooldownEndsAt = 0;
     }
 
     this.projectiles.length = 0;

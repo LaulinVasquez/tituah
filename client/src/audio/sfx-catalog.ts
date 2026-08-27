@@ -2,6 +2,7 @@ export const SFX_IDS = [
   "jump",
   "jumpAir",
   "land",
+  "thud",
   "platformDrop",
   "slapCharge",
   "slapSwing",
@@ -30,6 +31,8 @@ export const SFX: Record<SfxId, SfxDefinition> = {
   jump: { file: "jump.wav", volume: 0.34 },
   jumpAir: { file: "jump-air.wav", volume: 0.28 },
   land: { file: "land.wav", volume: 0.3 },
+  /** Denied action (e.g. throw while item still on-screen). */
+  thud: { file: "land.wav", volume: 0.45 },
   platformDrop: { file: "platform-drop.wav", volume: 0.2 },
   slapCharge: { file: "slap-charge.wav", volume: 0.22 },
   slapSwing: { file: "slap-swing.wav", volume: 0.32 },

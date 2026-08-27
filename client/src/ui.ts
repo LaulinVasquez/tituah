@@ -5,12 +5,6 @@ import {
   THROWABLE_IDS,
   THROWABLE_LABELS,
   emptyAvatar,
-  FLIPFLOP_THROW_ID,
-  findActiveFlipflop,
-  flipflopThrowReloadProgress,
-  getAttack,
-  getStage,
-  getThrowCooldownEndsAt,
   fighterColorFromId,
   isFighterColor,
   isStageId,
@@ -735,46 +729,14 @@ export class Ui {
     }
   }
 
-  updateThrowCooldown(state: GameState, time: number): void {
+  updateThrowCooldown(_state: GameState, _time: number): void {
     if (this.hud.hidden) return;
-    const localId = state.localPlayerId;
-    if (!localId) return;
-
-    const local =
-      state.predicted?.id === localId
-        ? state.predicted
-        : state.snapshot?.players.find((player) => player.id === localId);
-    if (!local) return;
-
-    const slot = this.hudSlots.find((entry) => entry.index === local.spawnIndex);
-    const cooldown = slot?.throwCooldown;
-    if (!cooldown) return;
-
-    const projectiles = state.snapshot?.projectiles ?? [];
-    const active = findActiveFlipflop(projectiles, localId);
-    if (active) {
-      const map = getStage(state.snapshot?.stageId ?? "");
-      const progress = flipflopThrowReloadProgress(active, map.blast);
-      cooldown.hidden = false;
-      cooldown.style.setProperty("--progress", String(progress));
-      cooldown.setAttribute("aria-valuenow", String(Math.round(progress * 100)));
-      return;
-    }
-
-    const endsAt = getThrowCooldownEndsAt(local);
-    const remaining = endsAt - time;
-    if (remaining <= 0) {
+    for (const slot of this.hudSlots) {
+      const cooldown = slot.throwCooldown;
+      if (!cooldown) continue;
       cooldown.hidden = true;
       cooldown.style.removeProperty("--progress");
-      return;
     }
-
-    const duration = Math.max(0.001, getAttack(FLIPFLOP_THROW_ID).cooldown);
-    const progress = 1 - Math.min(1, remaining / duration);
-
-    cooldown.hidden = false;
-    cooldown.style.setProperty("--progress", String(progress));
-    cooldown.setAttribute("aria-valuenow", String(Math.round(progress * 100)));
   }
 
   onChooseGuest(handler: () => void): void {

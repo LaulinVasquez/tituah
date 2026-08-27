@@ -20,13 +20,12 @@ export function getThrowCooldownEndsAt(player: PlayerState): number {
 
 export function canThrow(
   player: PlayerState,
-  time: number,
+  _time: number,
   projectiles: readonly Projectile[] = [],
 ): boolean {
   if (player.lives <= 0) return false;
-  // One item in flight at a time — reload once it leaves the playfield / despawns.
-  if (playerHasActiveFlipflop(projectiles, player.id)) return false;
-  return time >= getThrowCooldownEndsAt(player);
+  // One item at a time — ready again only after it leaves the playfield.
+  return !playerHasActiveFlipflop(projectiles, player.id);
 }
 
 export function isThrowCharging(player: PlayerState): boolean {
@@ -84,9 +83,8 @@ export function throwFlipflop(
   const speed = lerp(projectileDef.speed, projectileDef.maxSpeed ?? projectileDef.speed, t);
 
   cancelThrowCharge(player);
-  // Hold reload until the projectile leaves (match clears this early) or lifetime ends.
-  const reloadFor = Math.max(attack.cooldown ?? 0, projectileDef.lifetime);
-  player.throwCooldownEndsAt = time + reloadFor;
+  // No timed reload — unlock when the projectile leaves the playfield (see match).
+  player.throwCooldownEndsAt = 0;
   player.throwAnimUntil = time + THROW_ANIM_DURATION;
 
   return createProjectile({

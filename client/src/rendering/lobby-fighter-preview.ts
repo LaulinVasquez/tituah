@@ -187,6 +187,9 @@ export class LobbyFighterPreview {
         }
         return;
       }
+      if (this.podiumWinnerJump) {
+        this.stepDemoPhysics(dt);
+      }
       for (let slot = 0; slot < this.fighters.length; slot += 1) {
         const fighter = this.fighters[slot];
         if (slot >= this.maxSlots) {
@@ -274,10 +277,17 @@ export class LobbyFighterPreview {
 
   private handlePodiumAction(): void {
     if (this.podiumWinnerJump) {
-      void this.jump();
+      this.tryPodiumJump();
       return;
     }
     if (this.podiumLoserKo) this.replayPodiumKo();
+  }
+
+  /** Winner podium: jump anytime without canceling mid-air physics. */
+  private tryPodiumJump(): void {
+    if (!this.ready || this.loading) return;
+    if (this.demoGroundY <= 0) this.layout();
+    this.tryDemoJump();
   }
 
   private replayPodiumKo(): void {
@@ -760,12 +770,14 @@ export class LobbyFighterPreview {
     if (!this.ready || this.loading) return;
     if (this.layoutMode === "matchmaking" && !this.podiumWinnerJump) return;
     if (this.seeking && !this.podiumWinnerJump) return;
+    if (this.podiumWinnerJump) {
+      this.tryPodiumJump();
+      return;
+    }
     const token = this.demoToken + 1;
     this.demoToken = token;
     this.resetBody(this.localPlayer);
-    this.localPlayer.facing = this.podiumMode
-      ? (this.localSlot % 2 === 0 ? 1 : -1)
-      : 1;
+    this.localPlayer.facing = 1;
     await this.playJump(token, onApex);
   }
 
@@ -825,8 +837,15 @@ export class LobbyFighterPreview {
         if (!player) continue;
         const standY = this.podiumFeetY(slot, lobby.top, feetY);
         player.position.x = lanes[slot] ?? lanes[0];
-        player.position.y = standY;
         player.facing = slot % 2 === 0 ? 1 : -1;
+        if (slot === this.localSlot && this.podiumWinnerJump) {
+          this.demoGroundY = standY;
+          this.demoMinY = (stageTop - lobby.top) + 24;
+          // Keep airborne jumps; only snap feet when standing.
+          if (player.grounded) player.position.y = standY;
+        } else {
+          player.position.y = standY;
+        }
       }
       return;
     }

@@ -225,7 +225,8 @@ const REDBANDANA_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[
     ],
     ko: [
       { x: 622, y: 708, width: 165, height: 104 },
-      { x: 808, y: 676, width: 376, height: 143 },
+      { x: 807, y: 704, width: 215, height: 115 },
+      { x: 1022, y: 676, width: 160, height: 142 },
     ],
 };
 
@@ -437,9 +438,9 @@ const TOPHAT_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[]>> 
       { x: 353, y: 740, width: 101, height: 156 },
     ],
     ko: [
-      { x: 456, y: 798, width: 86, height: 97 },
+      { x: 457, y: 798, width: 85, height: 97 },
       { x: 548, y: 773, width: 140, height: 124 },
-      { x: 705, y: 781, width: 344, height: 121 },
+      { x: 704, y: 784, width: 204, height: 118 },
     ],
 };
 

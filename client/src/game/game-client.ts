@@ -1,16 +1,19 @@
 import {
+  canThrow,
   clonePlayerState,
   DEFAULT_STAGE,
+  getStage,
+  isProjectileInBlastZone,
   parsePlayerCount,
   playerCanStartAttack,
+  playerHasActiveFlipflop,
   releaseAttack,
   startAttack,
-  startThrowCharge,
-  throwFlipflop,
   TICK_DT,
   triggerRunningFourSlap,
   type FighterColor,
   type PlayerState,
+  type Projectile,
   type ServerMessage,
   type ThrowableId,
 } from "@tituah/shared";
@@ -44,6 +47,8 @@ export class GameClient {
   private colorSave: Promise<void> = Promise.resolve();
   private throwableSave: Promise<void> = Promise.resolve();
   private faceAccessorySave: Promise<void> = Promise.resolve();
+  /** Local throw until the server snapshot includes (or clears) it. */
+  private localThrown: Projectile | null = null;
 
   async start(canvas: HTMLCanvasElement): Promise<void> {
     this.input = new InputManager(canvas);
@@ -426,6 +431,7 @@ export class GameClient {
       this.localTime = this.state.snapshot?.time ?? 0;
       this.accumulator = 0;
       this.renderer.resetForMatch();
+      this.localThrown = null;
       if (this.state.localPlayerId && this.state.snapshot) {
         this.prediction.reset(this.state.snapshot, this.state.localPlayerId);
       }
@@ -510,7 +516,7 @@ export class GameClient {
       base.avatar = authService.profile.avatar;
     }
     const predicted = clonePlayerState(base);
-    const projectiles = this.state.snapshot?.projectiles ?? [];
+    const projectiles = this.throwProjectiles(TICK_DT);
     if (edges.runningFourSlapEdge) {
       triggerRunningFourSlap(predicted, this.localTime);
     } else {
@@ -521,16 +527,38 @@ export class GameClient {
         releaseAttack(predicted, this.localTime);
       }
     }
-    // Movement first so facing is current before any throw release this frame.
-    this.prediction.apply(predicted, input, this.localTime, projectiles);
-    if (edges.throwStart) {
-      startThrowCharge(predicted, this.localTime, projectiles);
+    if (edges.throwStart && !canThrow(predicted, this.localTime, projectiles)) {
+      audio.play("thud");
     }
-    if (edges.throwRelease) {
-      throwFlipflop(predicted, this.localTime, input.aimAngle, projectiles);
-    }
+    // Movement + throw charge/release (single throw path — no second throwFlipflop).
+    const spawned = this.prediction.apply(predicted, input, this.localTime, projectiles);
+    if (spawned) this.localThrown = spawned;
     this.state.predicted = predicted;
     sfx.observe(predicted, this.localTime);
+  }
+
+  /** Snapshot projectiles plus a locally predicted throw until the server catches up. */
+  private throwProjectiles(dt: number): Projectile[] {
+    const remote = this.state.snapshot?.projectiles ?? [];
+    const localId = this.state.localPlayerId;
+    if (localId && playerHasActiveFlipflop(remote, localId)) {
+      this.localThrown = null;
+    }
+
+    const local = this.localThrown;
+    if (!local) return remote;
+
+    local.age += dt;
+    local.position.x += local.velocity.x * dt;
+    local.position.y += local.velocity.y * dt;
+
+    const blast = getStage(this.state.snapshot?.stageId ?? "").blast;
+    if (!isProjectileInBlastZone(local, blast) || local.age >= local.lifetime) {
+      this.localThrown = null;
+      return remote;
+    }
+
+    return [...remote, local];
   }
 
   private draw(): void {
@@ -547,7 +575,8 @@ export class GameClient {
     }
 
     const time = this.state.snapshot?.time ?? this.localTime;
-    this.renderer.render(players, this.state.snapshot?.projectiles ?? [], this.localTime || time);
+    const projectiles = this.throwProjectiles(0);
+    this.renderer.render(players, projectiles, this.localTime || time);
     this.ui.updateHud(this.state);
     this.ui.updateThrowCooldown(this.state, this.localTime || time);
   }

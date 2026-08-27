@@ -45,11 +45,11 @@ export class PredictionManager {
     input: PlayerInput,
     time: number,
     projectiles: readonly Projectile[] = [],
-  ): PlayerState {
+  ): Projectile | null {
     const previous = this.previousInput;
     applyMovement(player, input, previous, this.map.platforms, TICK_DT);
     syncAttackFromInput(player, input, previous, time);
-    syncThrowFromInput(player, input, previous, time, [...projectiles]);
+    const spawned = syncThrowFromInput(player, input, previous, time, [...projectiles]);
     this.pending.push({ input, previous });
     if (this.pending.length > INPUT_HISTORY_LIMIT) {
       this.pending.shift();
@@ -57,7 +57,7 @@ export class PredictionManager {
     this.previousInput = input;
     this.player = player;
     this.localId = player.id;
-    return player;
+    return spawned;
   }
 
   reconcile(snapshot: MatchSnapshot): PlayerState | null {
