@@ -11,6 +11,8 @@ export interface BakedAccessoryDefinition {
   /** Avatar field that stores this accessory id when equipped. */
   field: "headAccessoryId" | "faceAccessoryId" | "bodyAccessoryId";
   url: string;
+  /** Dedicated run / run-slap / throw sheet (uneven pose spacing). */
+  movesUrl?: string;
   frames: Partial<Record<FighterAnimation, readonly FighterFrame[]>>;
 }
 
@@ -22,12 +24,14 @@ const SUNGLASSES_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[
       { x: 471, y: 77, width: 130, height: 126 },
     ],
     run: [
-      { x: 669, y: 71, width: 139, height: 124 },
-      { x: 832, y: 77, width: 147, height: 126 },
-      { x: 1004, y: 76, width: 139, height: 124 },
-      { x: 1176, y: 71, width: 143, height: 126 },
-      { x: 1340, y: 71, width: 141, height: 128 },
-      { x: 1490, y: 74, width: 138, height: 127 },
+      { x: 116, y: 126, width: 194, height: 164 },
+      { x: 349, y: 126, width: 184, height: 165 },
+      { x: 579, y: 126, width: 189, height: 167 },
+      { x: 805, y: 126, width: 193, height: 167 },
+      { x: 100, y: 338, width: 209, height: 157 },
+      { x: 341, y: 338, width: 198, height: 164 },
+      { x: 561, y: 336, width: 217, height: 163 },
+      { x: 802, y: 336, width: 206, height: 167 },
     ],
     jump: [
       { x: 30, y: 280, width: 130, height: 153 },
@@ -59,6 +63,19 @@ const SUNGLASSES_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[
       { x: 1318, y: 511, width: 159, height: 119 },
       { x: 1487, y: 511, width: 140, height: 119 },
     ],
+    runSlapCombo: [
+      { x: 98, y: 750, width: 117, height: 109, offsetX: -3 },
+      { x: 232, y: 744, width: 184, height: 116, offsetX: -29 },
+      { x: 416, y: 750, width: 113, height: 110, offsetX: -1 },
+      { x: 529, y: 747, width: 186, height: 116, offsetX: -13 },
+      { x: 715, y: 749, width: 126, height: 111, offsetX: -7 },
+      { x: 844, y: 744, width: 176, height: 116, offsetX: -11 },
+    ],
+    throw: [
+      { x: 111, y: 1117, width: 228, height: 188, offsetX: -10 },
+      { x: 432, y: 1112, width: 214, height: 192, offsetX: -6 },
+      { x: 776, y: 1117, width: 230, height: 188 },
+    ],
     hit: [
       { x: 26, y: 705, width: 141, height: 135 },
       { x: 210, y: 697, width: 125, height: 147 },
@@ -79,12 +96,14 @@ const CROWN_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[]>> =
       { x: 488, y: 69, width: 121, height: 163 },
     ],
     run: [
-      { x: 645, y: 64, width: 135, height: 167 },
-      { x: 793, y: 67, width: 143, height: 164 },
-      { x: 964, y: 62, width: 134, height: 166 },
-      { x: 1111, y: 59, width: 139, height: 168 },
-      { x: 1264, y: 62, width: 138, height: 167 },
-      { x: 1402, y: 77, width: 131, height: 163 },
+      { x: 100, y: 66, width: 182, height: 206 },
+      { x: 334, y: 70, width: 176, height: 205 },
+      { x: 572, y: 69, width: 177, height: 206 },
+      { x: 825, y: 74, width: 182, height: 201 },
+      { x: 79, y: 346, width: 208, height: 208 },
+      { x: 332, y: 355, width: 193, height: 205 },
+      { x: 556, y: 346, width: 215, height: 212 },
+      { x: 797, y: 350, width: 203, height: 211 },
     ],
     jump: [
       { x: 38, y: 287, width: 124, height: 162 },
@@ -115,6 +134,19 @@ const CROWN_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[]>> =
       { x: 1253, y: 538, width: 157, height: 159 },
       { x: 1403, y: 544, width: 132, height: 153 },
     ],
+    runSlapCombo: [
+      { x: 72, y: 760, width: 117, height: 155, offsetX: -5 },
+      { x: 231, y: 758, width: 179, height: 158, offsetX: -22 },
+      { x: 410, y: 765, width: 113, height: 152, offsetX: -2 },
+      { x: 528, y: 766, width: 194, height: 154, offsetX: -16 },
+      { x: 734, y: 762, width: 117, height: 154, offsetX: -8 },
+      { x: 862, y: 766, width: 164, height: 151, offsetX: -10 },
+    ],
+    throw: [
+      { x: 95, y: 1075, width: 217, height: 224, offsetX: -8 },
+      { x: 423, y: 1075, width: 208, height: 223, offsetX: -3 },
+      { x: 760, y: 1101, width: 213, height: 200, offsetX: 7 },
+    ],
     hit: [
       { x: 37, y: 756, width: 132, height: 150 },
       { x: 196, y: 757, width: 117, height: 149 },
@@ -135,12 +167,14 @@ const REDBANDANA_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[
       { x: 543, y: 60, width: 139, height: 136 },
     ],
     run: [
-      { x: 727, y: 58, width: 154, height: 140 },
-      { x: 908, y: 58, width: 155, height: 140 },
-      { x: 1086, y: 60, width: 152, height: 138 },
-      { x: 1269, y: 59, width: 160, height: 134 },
-      { x: 1458, y: 62, width: 147, height: 131 },
-      { x: 1623, y: 65, width: 147, height: 133 },
+      { x: 108, y: 93, width: 192, height: 170 },
+      { x: 342, y: 95, width: 191, height: 170 },
+      { x: 582, y: 94, width: 188, height: 172 },
+      { x: 807, y: 98, width: 191, height: 167 },
+      { x: 87, y: 285, width: 215, height: 161 },
+      { x: 336, y: 286, width: 203, height: 171 },
+      { x: 562, y: 287, width: 220, height: 167 },
+      { x: 806, y: 289, width: 206, height: 167 },
     ],
     jump: [
       { x: 36, y: 265, width: 150, height: 157 },
@@ -171,6 +205,19 @@ const REDBANDANA_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[
       { x: 1364, y: 488, width: 187, height: 139 },
       { x: 1552, y: 492, width: 179, height: 134 },
     ],
+    runSlapCombo: [
+      { x: 110, y: 697, width: 118, height: 111, offsetX: -3 },
+      { x: 242, y: 695, width: 179, height: 114, offsetX: -26 },
+      { x: 421, y: 698, width: 110, height: 112, offsetX: 1 },
+      { x: 531, y: 697, width: 182, height: 114, offsetX: -15 },
+      { x: 713, y: 697, width: 119, height: 112, offsetX: -9 },
+      { x: 834, y: 695, width: 169, height: 113, offsetX: -13 },
+    ],
+    throw: [
+      { x: 108, y: 1084, width: 227, height: 195, offsetX: -13 },
+      { x: 430, y: 1079, width: 215, height: 199, offsetX: -6 },
+      { x: 777, y: 1093, width: 229, height: 186 },
+    ],
     hit: [
       { x: 35, y: 685, width: 152, height: 137 },
       { x: 211, y: 674, width: 134, height: 149 },
@@ -190,11 +237,14 @@ const BASICCAP_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[]>
       { x: 529, y: 70, width: 136, height: 139 },
     ],
     run: [
-      { x: 711, y: 56, width: 144, height: 151 },
-      { x: 872, y: 67, width: 160, height: 144 },
-      { x: 1057, y: 76, width: 155, height: 139 },
-      { x: 1240, y: 72, width: 152, height: 137 },
-      { x: 1424, y: 74, width: 153, height: 139 },
+      { x: 93, y: 83, width: 189, height: 176 },
+      { x: 329, y: 83, width: 193, height: 178 },
+      { x: 574, y: 83, width: 187, height: 179 },
+      { x: 800, y: 88, width: 188, height: 172 },
+      { x: 74, y: 305, width: 210, height: 169 },
+      { x: 322, y: 303, width: 201, height: 175 },
+      { x: 552, y: 303, width: 213, height: 174 },
+      { x: 795, y: 303, width: 199, height: 173 },
     ],
     jump: [
       { x: 62, y: 271, width: 132, height: 155 },
@@ -225,6 +275,19 @@ const BASICCAP_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[]>
       { x: 1328, y: 490, width: 175, height: 130 },
       { x: 1503, y: 492, width: 159, height: 128 },
     ],
+    runSlapCombo: [
+      { x: 99, y: 686, width: 115, height: 115, offsetX: -1 },
+      { x: 233, y: 687, width: 173, height: 115, offsetX: -21 },
+      { x: 406, y: 689, width: 111, height: 115 },
+      { x: 523, y: 689, width: 182, height: 116, offsetX: -15 },
+      { x: 705, y: 693, width: 117, height: 111, offsetX: -7 },
+      { x: 832, y: 689, width: 172, height: 115, offsetX: -15 },
+    ],
+    throw: [
+      { x: 89, y: 1067, width: 230, height: 195, offsetX: -5 },
+      { x: 416, y: 1060, width: 210, height: 203, offsetX: -6 },
+      { x: 754, y: 1069, width: 234, height: 195, offsetX: -9 },
+    ],
     hit: [
       { x: 56, y: 695, width: 141, height: 139 },
       { x: 220, y: 693, width: 122, height: 141 },
@@ -245,12 +308,14 @@ const BLUEBANDANA_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame
       { x: 499, y: 123, width: 130, height: 127 },
     ],
     run: [
-      { x: 668, y: 130, width: 145, height: 125 },
-      { x: 824, y: 133, width: 155, height: 126 },
-      { x: 979, y: 134, width: 123, height: 122 },
-      { x: 1113, y: 128, width: 138, height: 123 },
-      { x: 1266, y: 130, width: 139, height: 125 },
-      { x: 1405, y: 132, width: 126, height: 126 },
+      { x: 105, y: 107, width: 190, height: 167 },
+      { x: 340, y: 112, width: 183, height: 164 },
+      { x: 574, y: 107, width: 187, height: 170 },
+      { x: 803, y: 111, width: 195, height: 165 },
+      { x: 86, y: 304, width: 212, height: 166 },
+      { x: 334, y: 304, width: 196, height: 173 },
+      { x: 555, y: 305, width: 218, height: 169 },
+      { x: 799, y: 309, width: 209, height: 168 },
     ],
     jump: [
       { x: 30, y: 343, width: 128, height: 140 },
@@ -282,6 +347,19 @@ const BLUEBANDANA_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame
       { x: 1218, y: 571, width: 160, height: 112 },
       { x: 1378, y: 574, width: 137, height: 110 },
     ],
+    runSlapCombo: [
+      { x: 99, y: 692, width: 119, height: 113, offsetX: -2 },
+      { x: 235, y: 687, width: 179, height: 117, offsetX: -30 },
+      { x: 414, y: 691, width: 114, height: 115, offsetX: 4 },
+      { x: 528, y: 692, width: 183, height: 115, offsetX: -17 },
+      { x: 711, y: 687, width: 119, height: 116, offsetX: -6 },
+      { x: 832, y: 687, width: 171, height: 115, offsetX: -14 },
+    ],
+    throw: [
+      { x: 90, y: 1078, width: 235, height: 198, offsetX: -2 },
+      { x: 427, y: 1089, width: 210, height: 184, offsetX: -4 },
+      { x: 769, y: 1089, width: 219, height: 189, offsetX: 3 },
+    ],
     hit: [
       { x: 24, y: 761, width: 128, height: 132 },
       { x: 173, y: 759, width: 118, height: 130 },
@@ -302,12 +380,14 @@ const TOPHAT_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[]>> 
       { x: 509, y: 83, width: 116, height: 163 },
     ],
     run: [
-      { x: 643, y: 85, width: 126, height: 162 },
-      { x: 777, y: 94, width: 130, height: 154 },
-      { x: 947, y: 94, width: 127, height: 154 },
-      { x: 1105, y: 93, width: 129, height: 157 },
-      { x: 1254, y: 92, width: 130, height: 159 },
-      { x: 1399, y: 92, width: 125, height: 159 },
+      { x: 107, y: 55, width: 183, height: 226 },
+      { x: 348, y: 61, width: 180, height: 224 },
+      { x: 576, y: 57, width: 182, height: 228 },
+      { x: 798, y: 59, width: 188, height: 226 },
+      { x: 87, y: 301, width: 213, height: 213 },
+      { x: 336, y: 301, width: 200, height: 222 },
+      { x: 554, y: 301, width: 221, height: 222 },
+      { x: 788, y: 303, width: 196, height: 220 },
     ],
     jump: [
       { x: 47, y: 308, width: 118, height: 168 },
@@ -338,6 +418,19 @@ const TOPHAT_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[]>> 
       { x: 1222, y: 533, width: 147, height: 156 },
       { x: 1374, y: 537, width: 140, height: 153 },
     ],
+    runSlapCombo: [
+      { x: 105, y: 689, width: 116, height: 162, offsetX: -4 },
+      { x: 244, y: 692, width: 177, height: 159, offsetX: -20 },
+      { x: 421, y: 699, width: 110, height: 153, offsetX: 2 },
+      { x: 531, y: 716, width: 174, height: 139, offsetX: -17 },
+      { x: 705, y: 704, width: 116, height: 148, offsetX: -5 },
+      { x: 828, y: 714, width: 169, height: 138, offsetX: -11 },
+    ],
+    throw: [
+      { x: 101, y: 1009, width: 216, height: 259, offsetX: -7 },
+      { x: 427, y: 1022, width: 200, height: 245, offsetX: -8 },
+      { x: 761, y: 1042, width: 214, height: 227, offsetX: 1 },
+    ],
     hit: [
       { x: 38, y: 734, width: 125, height: 162 },
       { x: 201, y: 735, width: 114, height: 161 },
@@ -358,11 +451,14 @@ const GOLDCHAIN_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[]
       { x: 489, y: 112, width: 128, height: 122 },
     ],
     run: [
-      { x: 649, y: 112, width: 140, height: 119 },
-      { x: 807, y: 114, width: 143, height: 121 },
-      { x: 987, y: 115, width: 140, height: 120 },
-      { x: 1164, y: 121, width: 143, height: 120 },
-      { x: 1337, y: 124, width: 141, height: 118 },
+      { x: 98, y: 90, width: 190, height: 163 },
+      { x: 342, y: 91, width: 183, height: 163 },
+      { x: 586, y: 89, width: 188, height: 165 },
+      { x: 817, y: 90, width: 191, height: 164 },
+      { x: 77, y: 280, width: 211, height: 160 },
+      { x: 335, y: 282, width: 200, height: 165 },
+      { x: 567, y: 284, width: 217, height: 161 },
+      { x: 811, y: 284, width: 206, height: 162 },
     ],
     jump: [
       { x: 50, y: 320, width: 127, height: 149 },
@@ -393,6 +489,19 @@ const GOLDCHAIN_FRAMES: Partial<Record<FighterAnimation, readonly FighterFrame[]
       { x: 1201, y: 546, width: 168, height: 117 },
       { x: 1369, y: 549, width: 147, height: 114 },
     ],
+    runSlapCombo: [
+      { x: 100, y: 683, width: 114, height: 106, offsetX: -3 },
+      { x: 231, y: 676, width: 183, height: 115, offsetX: -31 },
+      { x: 414, y: 682, width: 114, height: 109, offsetX: -1 },
+      { x: 528, y: 678, width: 189, height: 115, offsetX: -20 },
+      { x: 717, y: 683, width: 113, height: 107, offsetX: -9 },
+      { x: 837, y: 677, width: 172, height: 113, offsetX: -14 },
+    ],
+    throw: [
+      { x: 93, y: 1045, width: 230, height: 185, offsetX: -9 },
+      { x: 422, y: 1040, width: 213, height: 191, offsetX: -7 },
+      { x: 765, y: 1045, width: 229, height: 186, offsetX: -1 },
+    ],
     hit: [
       { x: 38, y: 731, width: 138, height: 139 },
       { x: 202, y: 731, width: 124, height: 139 },
@@ -413,6 +522,7 @@ export const BAKED_ACCESSORIES: readonly BakedAccessoryDefinition[] = [
     slot: "face",
     field: "faceAccessoryId",
     url: resolveAssetUrl("/assets/characters/accessories/sunglasses/sunglasses.png"),
+    movesUrl: resolveAssetUrl("/assets/characters/accessories/sunglasses/sunglasses-17-moves.png"),
     frames: SUNGLASSES_FRAMES,
   },
   {
@@ -421,6 +531,7 @@ export const BAKED_ACCESSORIES: readonly BakedAccessoryDefinition[] = [
     slot: "head",
     field: "headAccessoryId",
     url: resolveAssetUrl("/assets/characters/accessories/hat/crown.png"),
+    movesUrl: resolveAssetUrl("/assets/characters/accessories/hat/crown-17-moves.png"),
     frames: CROWN_FRAMES,
   },
   {
@@ -429,6 +540,7 @@ export const BAKED_ACCESSORIES: readonly BakedAccessoryDefinition[] = [
     slot: "head",
     field: "headAccessoryId",
     url: resolveAssetUrl("/assets/characters/accessories/bandana/red-bandana.png"),
+    movesUrl: resolveAssetUrl("/assets/characters/accessories/bandana/red-bandana-17-moves.png"),
     frames: REDBANDANA_FRAMES,
   },
   {
@@ -437,6 +549,7 @@ export const BAKED_ACCESSORIES: readonly BakedAccessoryDefinition[] = [
     slot: "head",
     field: "headAccessoryId",
     url: resolveAssetUrl("/assets/characters/accessories/hat/black-cap.png"),
+    movesUrl: resolveAssetUrl("/assets/characters/accessories/hat/black-cap-17-moves.png"),
     frames: BASICCAP_FRAMES,
   },
   {
@@ -445,6 +558,7 @@ export const BAKED_ACCESSORIES: readonly BakedAccessoryDefinition[] = [
     slot: "head",
     field: "headAccessoryId",
     url: resolveAssetUrl("/assets/characters/accessories/bandana/blue-bandana.png"),
+    movesUrl: resolveAssetUrl("/assets/characters/accessories/bandana/blue-bandana-17-moves.png"),
     frames: BLUEBANDANA_FRAMES,
   },
   {
@@ -453,6 +567,7 @@ export const BAKED_ACCESSORIES: readonly BakedAccessoryDefinition[] = [
     slot: "head",
     field: "headAccessoryId",
     url: resolveAssetUrl("/assets/characters/accessories/hat/top-hat.png"),
+    movesUrl: resolveAssetUrl("/assets/characters/accessories/hat/top-hat-17-moves.png"),
     frames: TOPHAT_FRAMES,
   },
   {
@@ -461,6 +576,7 @@ export const BAKED_ACCESSORIES: readonly BakedAccessoryDefinition[] = [
     slot: "body",
     field: "bodyAccessoryId",
     url: resolveAssetUrl("/assets/characters/accessories/chain/gold-chain.png"),
+    movesUrl: resolveAssetUrl("/assets/characters/accessories/chain/gold-chain-17-moves.png"),
     frames: GOLDCHAIN_FRAMES,
   },
 ];
@@ -500,9 +616,20 @@ export function bakedSheetForAccessoryId(
   return BAKED_ACCESSORY_BY_ID[accessoryId] ?? null;
 }
 
+/** Animations authored on the dedicated `movesUrl` sheet (run / double-hit / throw). */
+export const BAKED_ACCESSORY_MOVE_ANIMATIONS = [
+  "run",
+  "runSlapCombo",
+  "throw",
+] as const satisfies ReadonlyArray<FighterAnimation>;
+
+export function isBakedAccessoryMoveAnimation(animation: FighterAnimation): boolean {
+  return (BAKED_ACCESSORY_MOVE_ANIMATIONS as readonly string[]).includes(animation);
+}
+
 /**
  * Pad (or trim) accessory animation frames to match the base fighter atlas.
- * When an accessory sheet has fewer poses, the last authored frame is repeated.
+ * Extra accessory frames are dropped (first N kept). Missing frames repeat the last pose.
  */
 export function normalizeAccessoryFrames(
   frames: Partial<Record<FighterAnimation, readonly FighterFrame[]>>,

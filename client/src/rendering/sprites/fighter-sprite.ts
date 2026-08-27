@@ -13,6 +13,7 @@ import {
 } from "./appearance.js";
 import {
   bakedSheetForAccessoryId,
+  isBakedAccessoryMoveAnimation,
   normalizeAccessoryFrames,
   type BakedAccessoryDefinition,
 } from "./accessory-sheets.js";
@@ -53,7 +54,7 @@ const bakedTextureCache = new Map<
 >();
 
 function bakedTextureCacheKey(baked: BakedAccessoryDefinition): string {
-  return `${baked.url}#normalized-v2`;
+  return `${baked.url}|${baked.movesUrl ?? ""}#moves-v1`;
 }
 
 function sliceSheet(
@@ -100,11 +101,17 @@ function loadBakedAccessoryTextures(
   const cached = bakedTextureCache.get(bakedTextureCacheKey(baked));
   if (cached) return cached;
   const normalizedFrames = normalizeAccessoryFrames(baked.frames);
-  const promise = Assets.load<Texture>(baked.url).then((sheet) => {
+  const promise = Promise.all([
+    Assets.load<Texture>(baked.url),
+    baked.movesUrl ? Assets.load<Texture>(baked.movesUrl) : Promise.resolve(null),
+  ]).then(([mainSheet, movesSheet]) => {
     const textures: Partial<TextureSet> = {};
     for (const [name, frames] of Object.entries(normalizedFrames)) {
       if (!frames?.length) continue;
-      textures[name as FighterAnimation] = sliceSheet(sheet, frames);
+      const animation = name as FighterAnimation;
+      const sheet =
+        movesSheet && isBakedAccessoryMoveAnimation(animation) ? movesSheet : mainSheet;
+      textures[animation] = sliceSheet(sheet, frames);
     }
     return { textures, frames: normalizedFrames };
   });
@@ -397,6 +404,13 @@ export class FighterSprite extends Container {
         this.sprite.position.y + hand.offsetY * scale,
       );
       this.throwableOverlay.visible = true;
+      return;
+    }
+
+    // Accessory throw sheets are a different size than throw.png, so base hand
+    // anchors place a ghost item at the wrong spot. Baked poses already hold the item.
+    if (this.appearance?.bakedAccessoryId) {
+      this.throwableOverlay.visible = false;
       return;
     }
 

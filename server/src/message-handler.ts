@@ -55,6 +55,9 @@ export class MessageHandler {
       case "ready":
         this.matches.ready(session);
         break;
+      case "start_match":
+        this.matches.startMatch(session);
+        break;
     }
   }
 }

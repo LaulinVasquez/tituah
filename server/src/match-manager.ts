@@ -1,12 +1,15 @@
 import {
   getStage,
   isStageId,
-  parsePlayerCount,
+  parsePlayerCountPreference,
+  randomStageId,
   TICK_DT,
   TICK_RATE,
   type PlayerCount,
+  type PlayerCountPreference,
   type PlayerInput,
   type ServerMessage,
+  type StageId,
 } from "@tituah/shared";
 import { Match } from "./match.js";
 import type { Session } from "./session.js";
@@ -59,8 +62,8 @@ export class MatchManager {
 
     session.playerId = profile.uid;
 
-    const playerCount = parsePlayerCount(requestedPlayerCount);
-    const match = this.getOrCreateWaitingMatch(requestedStageId, playerCount);
+    const preference = parsePlayerCountPreference(requestedPlayerCount);
+    const match = this.getOrCreateWaitingMatch(requestedStageId, preference);
     const player = match.addPlayer(profile.uid, profile.displayName, profile.avatar);
     session.matchId = match.id;
     this.sessionsByPlayer.set(player.id, session);
@@ -72,9 +75,11 @@ export class MatchManager {
         type: "welcome",
         playerId: player.id,
         matchId: match.id,
+        stageId: match.map.id,
         player,
         players: roster,
         maxPlayers: match.maxPlayers,
+        openMatch: match.openMatch,
         readyIds,
         rematch: match.rematch,
         winnerId: match.winnerId,
@@ -174,22 +179,77 @@ export class MatchManager {
     this.tryStart(match);
   }
 
+  startMatch(session: Session): void {
+    const match = this.getSessionMatch(session);
+    if (!match || !session.playerId) return;
+    if (!match.requestStart(session.playerId)) return;
+    this.tryStart(match);
+  }
+
   private getSessionMatch(session: Session): Match | null {
     if (!session.matchId) return null;
     return this.matches.get(session.matchId) ?? null;
   }
 
-  private roomKey(stageId: string, playerCount: PlayerCount): string {
-    return `${stageId}:${playerCount}`;
+  private roomKey(stageId: string, bucket: "open" | PlayerCount): string {
+    return `${stageId}:${bucket}`;
   }
 
-  private getOrCreateWaitingMatch(requestedStageId: string, playerCount: PlayerCount): Match {
-    const stageId = isStageId(requestedStageId) ? requestedStageId : "barnyard";
-    const key = this.roomKey(stageId, playerCount);
-    const rooms = this.waitingByRoom.get(key) ?? [];
-    const open = rooms.find((match) => match.status === "waiting" && match.playerCount < match.maxPlayers);
-    if (open) return open;
+  private roomKeyForMatch(match: Match): string {
+    return match.openMatch
+      ? this.roomKey(match.map.id, "open")
+      : this.roomKey(match.map.id, match.maxPlayers);
+  }
 
+  private isCompatible(match: Match, preference: PlayerCountPreference): boolean {
+    if (match.status !== "waiting" || match.playerCount >= match.maxPlayers) return false;
+    if (match.openMatch) return preference === "any";
+    if (preference === "any") return true;
+    return match.maxPlayers === preference;
+  }
+
+  private fillRatio(match: Match): number {
+    return match.playerCount / match.maxPlayers;
+  }
+
+  private findCompatibleWaitingMatch(
+    preference: PlayerCountPreference,
+    stageId?: StageId,
+  ): Match | undefined {
+    const candidates: Match[] = [];
+    for (const [key, rooms] of this.waitingByRoom) {
+      if (stageId && !key.startsWith(`${stageId}:`)) continue;
+      for (const match of rooms) {
+        if (this.isCompatible(match, preference)) candidates.push(match);
+      }
+    }
+    if (!candidates.length) return undefined;
+    candidates.sort((a, b) => this.fillRatio(b) - this.fillRatio(a));
+    return candidates[0];
+  }
+
+  private getOrCreateWaitingMatch(
+    requestedStageId: string,
+    preference: PlayerCountPreference,
+  ): Match {
+    const preferAnyStage = requestedStageId === "any";
+    if (preferAnyStage) {
+      const open = this.findCompatibleWaitingMatch(preference);
+      if (open) return open;
+      return this.createWaitingMatch(randomStageId(), preference);
+    }
+
+    const stageId = isStageId(requestedStageId) ? requestedStageId : "barnyard";
+    const open = this.findCompatibleWaitingMatch(preference, stageId);
+    if (open) return open;
+    return this.createWaitingMatch(stageId, preference);
+  }
+
+  private createWaitingMatch(stageId: StageId, preference: PlayerCountPreference): Match {
+    const openMatch = preference === "any";
+    const maxPlayers: PlayerCount = openMatch ? 4 : preference;
+    const key = openMatch ? this.roomKey(stageId, "open") : this.roomKey(stageId, maxPlayers);
+    const rooms = this.waitingByRoom.get(key) ?? [];
     const stage = getStage(stageId);
     const match = new Match(
       crypto.randomUUID(),
@@ -225,7 +285,8 @@ export class MatchManager {
           }
         },
       },
-      playerCount,
+      maxPlayers,
+      openMatch,
     );
     this.matches.set(match.id, match);
     rooms.push(match);
@@ -234,17 +295,24 @@ export class MatchManager {
   }
 
   private removeFromWaiting(match: Match): void {
-    const key = this.roomKey(match.map.id, match.maxPlayers);
-    const rooms = this.waitingByRoom.get(key);
-    if (!rooms) return;
-    const next = rooms.filter((entry) => entry !== match);
-    if (next.length) this.waitingByRoom.set(key, next);
-    else this.waitingByRoom.delete(key);
+    // Prefer the key derived from current flags; also scrub any stale key if size locked mid-life.
+    const keys = new Set([
+      this.roomKeyForMatch(match),
+      this.roomKey(match.map.id, "open"),
+      this.roomKey(match.map.id, match.maxPlayers),
+    ]);
+    for (const key of keys) {
+      const rooms = this.waitingByRoom.get(key);
+      if (!rooms) continue;
+      const next = rooms.filter((entry) => entry !== match);
+      if (next.length) this.waitingByRoom.set(key, next);
+      else this.waitingByRoom.delete(key);
+    }
   }
 
   private ensureWaiting(match: Match): void {
     if (match.status !== "waiting") return;
-    const key = this.roomKey(match.map.id, match.maxPlayers);
+    const key = this.roomKeyForMatch(match);
     const rooms = this.waitingByRoom.get(key) ?? [];
     if (!rooms.includes(match)) {
       rooms.push(match);

@@ -6,17 +6,24 @@ import {
   THROWABLE_LABELS,
   emptyAvatar,
   FLIPFLOP_THROW_ID,
+  findActiveFlipflop,
+  flipflopThrowReloadProgress,
   getAttack,
+  getStage,
   getThrowCooldownEndsAt,
   fighterColorFromId,
   isFighterColor,
   isStageId,
+  isStagePreference,
   isThrowableId,
   parsePlayerCount,
+  parsePlayerCountPreference,
   throwableIdFromAvatar,
   type FighterColor,
   type PlayerCount,
+  type PlayerCountPreference,
   type StageId,
+  type StagePreference,
   type PlayerState,
   type ThrowableId,
   type UserProfile,
@@ -105,6 +112,7 @@ export class Ui {
   readonly exitConfirm = required("#exit-confirm");
   readonly stageButtons = document.querySelectorAll<HTMLButtonElement>("[data-stage]");
   readonly playerCountButtons = document.querySelectorAll<HTMLButtonElement>("[data-players]");
+  readonly startMatchButton = required("#start-match", HTMLButtonElement);
 
   private pane: LobbyPane = "landing";
   private paneBeforeEdit: LobbyPane = "landing";
@@ -122,9 +130,10 @@ export class Ui {
   private onAccessorySelected: (accessoryId: string | null) => void = () => undefined;
   private profile: UserProfile | null = null;
   private fighter?: LobbyFighterPreview;
-  private selectedStage: StageId = "barnyard";
-  private selectedPlayerCount: PlayerCount = 2;
-  private matchSize: PlayerCount = 2;
+  private selectedStage: StagePreference = "any";
+  private selectedPlayerCount: PlayerCountPreference = "any";
+  private matchSize: PlayerCount = 4;
+  private openMatch = false;
   private waitingRoster: PlayerState[] = [];
   private waitingLocal: PlayerState | null = null;
   private rematchReadyIds: Set<string> | null = null;
@@ -169,13 +178,13 @@ export class Ui {
     for (const button of this.stageButtons) {
       button.addEventListener("click", () => {
         const id = button.dataset.stage;
-        if (!isStageId(id)) return;
+        if (!isStagePreference(id)) return;
         this.selectStage(id);
       });
     }
     for (const button of this.playerCountButtons) {
       button.addEventListener("click", () => {
-        this.selectPlayerCount(parsePlayerCount(button.dataset.players));
+        this.selectPlayerCount(parsePlayerCountPreference(button.dataset.players));
       });
     }
     this.displayNameInput.addEventListener("input", () => {
@@ -246,6 +255,7 @@ export class Ui {
           if (button.id === "joystick-toggle") return;
           if (button.id === "account-status") return;
           if (button.id === "cancel-wait") return;
+          if (button.id === "start-match") return;
           const demo = button.dataset.demoMove;
           if (demo && isDemoMove(demo)) {
             event.preventDefault();
@@ -312,28 +322,42 @@ export class Ui {
     return this.profile?.displayName || this.loginNameInput.value.trim() || "Fighter";
   }
 
-  stageId(): StageId {
+  stageId(): StagePreference {
     return this.selectedStage;
   }
 
-  playerCount(): PlayerCount {
+  playerCount(): PlayerCountPreference {
     return this.selectedPlayerCount;
   }
 
-  private selectStage(stageId: StageId): void {
-    this.selectedStage = stageId;
-    for (const entry of this.stageButtons) {
-      entry.dataset.selected = String(entry.dataset.stage === stageId);
-    }
+  applyMatchStage(stageId: string): void {
+    if (!isStageId(stageId)) return;
     const url = STAGE_VISUALS[stageId].background;
     this.characterStageBackdrop.style.setProperty("--stage-backdrop", `url("${url}")`);
   }
 
-  private selectPlayerCount(playerCount: PlayerCount): void {
-    this.selectedPlayerCount = playerCount;
-    for (const entry of this.playerCountButtons) {
-      entry.dataset.selected = String(parsePlayerCount(entry.dataset.players) === playerCount);
+  private selectStage(stageId: StagePreference): void {
+    this.selectedStage = stageId;
+    for (const entry of this.stageButtons) {
+      entry.dataset.selected = String(entry.dataset.stage === stageId);
     }
+    const previewId: StageId = stageId === "any" ? "barnyard" : stageId;
+    const url = STAGE_VISUALS[previewId].background;
+    this.characterStageBackdrop.style.setProperty("--stage-backdrop", `url("${url}")`);
+  }
+
+  private selectPlayerCount(preference: PlayerCountPreference): void {
+    this.selectedPlayerCount = preference;
+    for (const entry of this.playerCountButtons) {
+      const value = entry.dataset.players;
+      entry.dataset.selected = String(
+        value === "any" ? preference === "any" : parsePlayerCount(value) === preference,
+      );
+    }
+  }
+
+  private preferredCapacity(): PlayerCount {
+    return this.selectedPlayerCount === "any" ? 4 : this.selectedPlayerCount;
   }
 
   email(): string {
@@ -376,6 +400,8 @@ export class Ui {
     guestSession = this.guestSession,
     accountEmail = this.accountEmail,
   ): void {
+    this.openMatch = false;
+    this.startMatchButton.hidden = true;
     this.setSeeking(false);
     this.setMatchmakingMode(false);
     this.fighter?.clearRoster();
@@ -440,8 +466,10 @@ export class Ui {
     else this.showAuth();
   }
 
-  showWaiting(slot?: number, maxPlayers: PlayerCount = this.selectedPlayerCount): void {
+  showWaiting(slot?: number, maxPlayers: PlayerCount = this.preferredCapacity(), openMatch?: boolean): void {
     this.matchSize = maxPlayers;
+    if (openMatch !== undefined) this.openMatch = openMatch;
+    else this.openMatch = this.selectedPlayerCount === "any";
     this.setOverlay(true);
     this.hud.hidden = true;
     this.setSeeking(true);
@@ -451,8 +479,13 @@ export class Ui {
     required("#waiting-solo").hidden = false;
     required("#waiting-versus").hidden = true;
     required("#waiting-countdown").hidden = true;
-    const waitingLabel = maxPlayers === 2 ? "Waiting for opponent" : "Waiting for players";
+    const waitingLabel = this.openMatch
+      ? "Waiting for players (up to 4)"
+      : maxPlayers === 2
+        ? "Waiting for opponent"
+        : "Waiting for players";
     required("#waiting-title").textContent = waitingLabel;
+    this.syncStartMatchButton();
     this.setPane("waiting");
     if (this.profile) {
       const spawnIndex = slot ?? 0;
@@ -498,22 +531,42 @@ export class Ui {
     players: PlayerState[],
     maxPlayers: PlayerCount = this.matchSize,
     entrance: "join-run" | "reveal" | "instant" = "instant",
+    openMatch = this.openMatch,
   ): Promise<void> {
     this.matchSize = maxPlayers;
+    this.openMatch = openMatch;
     this.waitingLocal = local;
     this.waitingRoster = [...players];
     this.setOverlay(true);
     this.hud.hidden = true;
-    this.setSeeking(players.length < maxPlayers);
+    this.setSeeking(this.openMatch || players.length < maxPlayers);
     this.setMatchmakingMode(true);
     this.applyWaitingSlot(local.spawnIndex);
     const full = players.length >= maxPlayers;
-    required("#waiting-solo").hidden = full;
-    required("#waiting-versus").hidden = !full;
+    const hasCompany = players.length > 1;
+    required("#waiting-solo").hidden = hasCompany;
+    required("#waiting-versus").hidden = !hasCompany;
     required("#waiting-countdown").hidden = true;
     required("#countdown-banner").hidden = true;
-    required("#waiting-title").textContent = full ? "Match found" : `Waiting for players (${players.length}/${maxPlayers})`;
+    const versusBlurb = required("#waiting-versus").querySelector(".blurb");
+    if (versusBlurb) {
+      versusBlurb.textContent = this.openMatch
+        ? players.length >= 2
+          ? "Enough players — anyone can press Start."
+          : "Waiting for more fighters…"
+        : full
+          ? "Match found — fighters ready. Countdown starting…"
+          : "Waiting for the lobby to fill…";
+    }
+    if (this.openMatch) {
+      required("#waiting-title").textContent = `Waiting for players (${players.length}/${maxPlayers})`;
+    } else {
+      required("#waiting-title").textContent = full
+        ? "Match found"
+        : `Waiting for players (${players.length}/${maxPlayers})`;
+    }
     this.syncVersusRoster(players, maxPlayers);
+    this.syncStartMatchButton();
     this.setPane("waiting");
 
     const others = players.filter((player) => player.id !== local.id);
@@ -577,6 +630,8 @@ export class Ui {
   }
 
   showCountdown(seconds: number): void {
+    this.openMatch = false;
+    this.startMatchButton.hidden = true;
     const banner = required("#countdown-banner");
     const readout = required("#waiting-countdown");
     const label = seconds > 0 ? String(seconds) : "Fight!";
@@ -595,6 +650,8 @@ export class Ui {
   }
 
   showGame(): void {
+    this.openMatch = false;
+    this.startMatchButton.hidden = true;
     this.hideResultBanner();
     this.setSeeking(false);
     this.setMatchmakingMode(false);
@@ -612,6 +669,8 @@ export class Ui {
     readyIds: string[] = [],
     placements: Record<string, number> = {},
   ): void {
+    this.openMatch = false;
+    this.startMatchButton.hidden = true;
     this.matchSize = maxPlayers;
     this.waitingLocal = local ?? this.waitingLocal;
     this.waitingRoster = players.length > 0 ? [...players] : this.waitingRoster;
@@ -691,6 +750,17 @@ export class Ui {
     const cooldown = slot?.throwCooldown;
     if (!cooldown) return;
 
+    const projectiles = state.snapshot?.projectiles ?? [];
+    const active = findActiveFlipflop(projectiles, localId);
+    if (active) {
+      const map = getStage(state.snapshot?.stageId ?? "");
+      const progress = flipflopThrowReloadProgress(active, map.blast);
+      cooldown.hidden = false;
+      cooldown.style.setProperty("--progress", String(progress));
+      cooldown.setAttribute("aria-valuenow", String(Math.round(progress * 100)));
+      return;
+    }
+
     const endsAt = getThrowCooldownEndsAt(local);
     const remaining = endsAt - time;
     if (remaining <= 0) {
@@ -739,8 +809,18 @@ export class Ui {
     bindPress(this.cancelWaitButton, handler, this.directTapHandling);
   }
 
+  onStartMatch(handler: () => void): void {
+    bindPress(this.startMatchButton, handler, this.directTapHandling);
+  }
+
   onAgain(handler: () => void): void {
     bindPress(this.againButton, handler, this.directTapHandling);
+  }
+
+  private syncStartMatchButton(): void {
+    const show = this.openMatch && this.pane === "waiting";
+    this.startMatchButton.hidden = !show;
+    this.startMatchButton.disabled = this.waitingRoster.length < 2;
   }
 
   onResultBack(handler: () => void): void {
@@ -1223,6 +1303,7 @@ export class Ui {
     required("#player-card-result").hidden = !result;
     required("#player-card-moves").hidden = !editing;
     this.cancelWaitButton.hidden = !waiting || !showProfile;
+    this.syncStartMatchButton();
     this.playerCard.classList.toggle("is-locked", showLocked);
     this.playerCard.classList.toggle("is-bare", onAuth);
     this.playerCard.classList.toggle("is-moves", editing);

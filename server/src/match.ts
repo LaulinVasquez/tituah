@@ -77,7 +77,10 @@ interface ActiveHitbox {
 export class Match {
   readonly id: string;
   readonly map: StageMap;
-  readonly maxPlayers: PlayerCount;
+  /** Join capacity while waiting; locked to roster size when an open match starts. */
+  maxPlayers: PlayerCount;
+  /** Open lobbies accept only "any" seekers and start via Start, not auto-fill. */
+  openMatch: boolean;
   readonly players = new Map<string, PlayerState>();
   readonly projectiles: Projectile[] = [];
   readonly scores: Record<string, number> = {};
@@ -112,12 +115,14 @@ export class Match {
     map: StageMap = DEFAULT_STAGE,
     lifecycle: MatchLifecycle = {},
     maxPlayers: PlayerCount = 2,
+    openMatch = false,
   ) {
     this.id = id;
     this.emit = emit;
     this.map = map;
     this.lifecycle = lifecycle;
     this.maxPlayers = maxPlayers;
+    this.openMatch = openMatch;
   }
 
   get playerCount(): number {
@@ -174,10 +179,22 @@ export class Match {
   }
 
   canStart(): boolean {
+    // Open matches only start via requestStart (any player presses Start).
+    if (this.openMatch) return false;
     if (this.status !== "waiting" || this.players.size < this.maxPlayers) return false;
     for (const id of this.players.keys()) {
       if (!this.readyPlayerIds.has(id)) return false;
     }
+    return true;
+  }
+
+  /** Lock roster size and allow countdown for an open lobby. Any player may call this. */
+  requestStart(playerId: string): boolean {
+    if (!this.openMatch || this.status !== "waiting" || !this.players.has(playerId)) return false;
+    const size = this.players.size;
+    if (size < 2 || (size !== 2 && size !== 3 && size !== 4)) return false;
+    this.maxPlayers = size;
+    this.openMatch = false;
     return true;
   }
 

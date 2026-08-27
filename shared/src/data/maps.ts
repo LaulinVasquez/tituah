@@ -1,6 +1,9 @@
 import type { StageMap } from "../types.js";
 
 export type StageId = "barnyard" | "fridge" | "meadow";
+export type StagePreference = StageId | "any";
+
+export const STAGE_IDS: StageId[] = ["barnyard", "fridge", "meadow"];
 
 export const GAME_WIDTH = 1280;
 export const GAME_HEIGHT = 720;
@@ -69,6 +72,14 @@ export const DEFAULT_STAGE = BARNYARD_STAGE;
 
 export function isStageId(value: unknown): value is StageId {
   return value === "barnyard" || value === "fridge" || value === "meadow";
+}
+
+export function isStagePreference(value: unknown): value is StagePreference {
+  return value === "any" || isStageId(value);
+}
+
+export function randomStageId(): StageId {
+  return STAGE_IDS[Math.floor(Math.random() * STAGE_IDS.length)]!;
 }
 
 export function getStage(id: string): StageMap {

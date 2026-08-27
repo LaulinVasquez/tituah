@@ -80,6 +80,7 @@ export class GameClient {
     this.ui.onSignOut(() => void this.signOut());
     this.ui.onJoin(() => void this.connect());
     this.ui.onCancelWait(() => this.leaveRoom());
+    this.ui.onStartMatch(() => this.requestStartMatch());
     this.ui.onAgain(() => this.readyUp());
     this.ui.onResultBack(() => this.leaveRoom());
     this.ui.onExitMatch(() => this.leaveRoom());
@@ -170,6 +171,11 @@ export class GameClient {
     if (!this.inRoom || !this.socket.connected) return;
     this.ui.markLocalReady();
     this.socket.send({ type: "ready" });
+  }
+
+  private requestStartMatch(): void {
+    if (!this.inRoom || !this.socket.connected) return;
+    this.socket.send({ type: "start_match" });
   }
 
   private async sendJoin(): Promise<void> {
@@ -368,7 +374,9 @@ export class GameClient {
     if (message.type === "welcome") {
       if (!this.seekingMatch) return;
       this.inRoom = true;
+      this.ui.applyMatchStage(message.stageId);
       const maxPlayers = parsePlayerCount(message.maxPlayers);
+      const openMatch = Boolean(message.openMatch);
       if (message.rematch) {
         this.ui.showResult(
           message.winnerId,
@@ -382,9 +390,9 @@ export class GameClient {
       }
       const others = message.players.filter((player) => player.id !== message.playerId);
       if (others.length > 0) {
-        void this.ui.showRoster(message.player, message.players, maxPlayers, "join-run");
+        void this.ui.showRoster(message.player, message.players, maxPlayers, "join-run", openMatch);
       } else {
-        this.ui.showWaiting(message.player.spawnIndex, maxPlayers);
+        this.ui.showWaiting(message.player.spawnIndex, maxPlayers, openMatch);
       }
     }
     if (message.type === "player_joined") {

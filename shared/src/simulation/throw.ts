@@ -4,7 +4,7 @@ import { lerp } from "../math.js";
 import { throwableIdFromAvatar } from "../sprites/ids.js";
 import type { PlayerInput, PlayerState, Projectile } from "../types.js";
 import { cancelAttackCharge, getCharge } from "./combat.js";
-import { createProjectile } from "./projectiles.js";
+import { createProjectile, playerHasActiveFlipflop } from "./projectiles.js";
 
 const THROW_SPAWN_Y = -PLAYER_HEIGHT * 0.55;
 const THROW_ARC = -0.22;
@@ -21,11 +21,11 @@ export function getThrowCooldownEndsAt(player: PlayerState): number {
 export function canThrow(
   player: PlayerState,
   time: number,
-  _projectiles: readonly Projectile[] = [],
+  projectiles: readonly Projectile[] = [],
 ): boolean {
   if (player.lives <= 0) return false;
-  // Finite cooldown only — never gate on an in-flight projectile (Infinity used to
-  // serialize as null over the wire and permanently block throws on the server).
+  // One item in flight at a time — reload once it leaves the playfield / despawns.
+  if (playerHasActiveFlipflop(projectiles, player.id)) return false;
   return time >= getThrowCooldownEndsAt(player);
 }
 
@@ -84,7 +84,9 @@ export function throwFlipflop(
   const speed = lerp(projectileDef.speed, projectileDef.maxSpeed ?? projectileDef.speed, t);
 
   cancelThrowCharge(player);
-  player.throwCooldownEndsAt = time + (attack.cooldown ?? 0);
+  // Hold reload until the projectile leaves (match clears this early) or lifetime ends.
+  const reloadFor = Math.max(attack.cooldown ?? 0, projectileDef.lifetime);
+  player.throwCooldownEndsAt = time + reloadFor;
   player.throwAnimUntil = time + THROW_ANIM_DURATION;
 
   return createProjectile({

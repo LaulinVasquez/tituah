@@ -4,6 +4,7 @@ import type { Vec2 } from "./math.js";
 export type ClientMessage =
   | JoinMessage
   | ReadyMessage
+  | StartMatchMessage
   | ClientInputMessage
   | AttackStartMessage
   | AttackReleaseMessage
@@ -30,7 +31,8 @@ export interface JoinMessage {
   name: string;
   stageId: string;
   idToken: string;
-  playerCount: number;
+  /** `"any"` for open preference, or fixed 2 / 3 / 4. */
+  playerCount: "any" | number;
 }
 
 export interface ErrorMessage {
@@ -73,13 +75,20 @@ export interface ReadyMessage {
   type: "ready";
 }
 
+export interface StartMatchMessage {
+  type: "start_match";
+}
+
 export interface WelcomeMessage {
   type: "welcome";
   playerId: string;
   matchId: string;
+  stageId: string;
   player: PlayerState;
   players: PlayerState[];
   maxPlayers: number;
+  /** True when the lobby is open (any-preference); Start is client-driven. */
+  openMatch: boolean;
   readyIds: string[];
   rematch: boolean;
   winnerId: string | null;

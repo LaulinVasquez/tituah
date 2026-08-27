@@ -9,6 +9,8 @@ export type MatchStatus = "waiting" | "countdown" | "playing" | "ended";
 
 export type PlayerCount = 2 | 3 | 4;
 
+export type PlayerCountPreference = "any" | PlayerCount;
+
 export const PLAYER_COUNTS = [2, 3, 4] as const;
 
 export function isPlayerCount(value: unknown): value is PlayerCount {
@@ -18,6 +20,17 @@ export function isPlayerCount(value: unknown): value is PlayerCount {
 export function parsePlayerCount(value: unknown): PlayerCount {
   const numeric = typeof value === "string" ? Number(value) : value;
   return numeric === 3 || numeric === 4 ? numeric : 2;
+}
+
+export function isPlayerCountPreference(value: unknown): value is PlayerCountPreference {
+  return value === "any" || isPlayerCount(value);
+}
+
+export function parsePlayerCountPreference(value: unknown): PlayerCountPreference {
+  if (value === "any") return "any";
+  const numeric = typeof value === "string" ? Number(value) : value;
+  if (numeric === 2 || numeric === 3 || numeric === 4) return numeric;
+  return "any";
 }
 
 export type AttackState =

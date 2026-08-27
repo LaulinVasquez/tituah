@@ -98,6 +98,18 @@
       <div id="overlay">
         <section id="lobby" class="panel lobby is-signed-out">
           <button
+            id="start-match"
+            type="button"
+            class="start-match-overlay"
+            hidden
+            aria-label="Start match"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M8 5.14v13.72L19 12 8 5.14z" />
+            </svg>
+            <span>Start</span>
+          </button>
+          <button
             id="audio-mute"
             class="audio-mute"
             type="button"
@@ -351,27 +363,17 @@
               <h2>Let’s fight</h2>
               <p class="stage-heading">Select stage</p>
               <div class="stage-select" role="group" aria-label="Select stage">
-                <button type="button" data-stage="barnyard" data-selected="true">
-                  <strong>Barnyard Brawl</strong><span>Sunset farm</span>
-                </button>
-                <button type="button" data-stage="fridge" data-selected="false">
-                  <strong>Fridge Frenzy</strong><span>Cold storage</span>
-                </button>
-                <button type="button" data-stage="meadow" data-selected="false">
-                  <strong>Sky-High Meadow</strong><span>Floating islands</span>
-                </button>
+                <button type="button" data-stage="any" data-selected="true">Any</button>
+                <button type="button" data-stage="barnyard" data-selected="false">Barnyard Brawl</button>
+                <button type="button" data-stage="fridge" data-selected="false">Fridge Frenzy</button>
+                <button type="button" data-stage="meadow" data-selected="false">Sky-High Meadow</button>
               </div>
               <p class="stage-heading">Players</p>
               <div class="player-count-select" role="group" aria-label="Players">
-                <button type="button" data-players="2" data-selected="true">
-                  <strong>2</strong><span>Duel</span>
-                </button>
-                <button type="button" data-players="3" data-selected="false">
-                  <strong>3</strong><span>Trio</span>
-                </button>
-                <button type="button" data-players="4" data-selected="false">
-                  <strong>4</strong><span>Free-for-all</span>
-                </button>
+                <button type="button" data-players="any" data-selected="true">Any</button>
+                <button type="button" data-players="2" data-selected="false">2</button>
+                <button type="button" data-players="3" data-selected="false">3</button>
+                <button type="button" data-players="4" data-selected="false">4</button>
               </div>
               <button id="join" type="button">Find match</button>
               <button id="edit-avatar" class="secondary" type="button">Edit fighter</button>
