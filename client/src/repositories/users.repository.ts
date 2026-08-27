@@ -22,7 +22,9 @@ export class UsersRepository {
     username?: string;
     baseAvatarId?: string;
     throwableId?: string;
+    headAccessoryId?: string | null;
     faceAccessoryId?: string | null;
+    bodyAccessoryId?: string | null;
   }): Promise<UserProfile | null> {
     const result = await apiRequest<{ profile: UserProfile }>("/api/me", {
       method: "PATCH",

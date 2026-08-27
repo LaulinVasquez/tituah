@@ -116,13 +116,23 @@ export class AuthService {
     return this.profile;
   }
 
-  async persistFaceAccessory(faceAccessoryId: string | null): Promise<UserProfile> {
+  async persistFaceAccessory(accessoryId: string | null): Promise<UserProfile> {
     if (!this.profile) throw new Error("Not signed in");
-    this.profile = {
-      ...this.profile,
-      avatar: { ...this.profile.avatar, faceAccessoryId },
-    };
-    const saved = await usersRepository.updateSafe({ faceAccessoryId });
+    const avatar = { ...this.profile.avatar };
+    avatar.headAccessoryId = null;
+    avatar.faceAccessoryId = null;
+    avatar.bodyAccessoryId = null;
+    if (accessoryId) {
+      const { BAKED_ACCESSORY_BY_ID } = await import("../rendering/sprites/accessory-sheets.js");
+      const def = BAKED_ACCESSORY_BY_ID[accessoryId];
+      if (def) avatar[def.field] = accessoryId;
+    }
+    this.profile = { ...this.profile, avatar };
+    const saved = await usersRepository.updateSafe({
+      headAccessoryId: avatar.headAccessoryId,
+      faceAccessoryId: avatar.faceAccessoryId,
+      bodyAccessoryId: avatar.bodyAccessoryId,
+    });
     if (saved) this.profile = saved;
     return this.profile;
   }
@@ -131,7 +141,9 @@ export class AuthService {
     displayName?: string;
     baseAvatarId?: string;
     throwableId?: string;
+    headAccessoryId?: string | null;
     faceAccessoryId?: string | null;
+    bodyAccessoryId?: string | null;
   }): Promise<UserProfile> {
     const previous = this.profile;
     const saved = await usersRepository.updateSafe(data);

@@ -1,5 +1,28 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isFighterColor, isThrowableId, SPRITE_ASSET_IDS, type ItemSlot } from "@tituah/shared";
+
+const BAKED_ACCESSORY_IDS = new Set<string>([
+  SPRITE_ASSET_IDS.sunglasses,
+  SPRITE_ASSET_IDS.crown,
+  SPRITE_ASSET_IDS.redBandana,
+  SPRITE_ASSET_IDS.basicCap,
+  SPRITE_ASSET_IDS.blueBandana,
+  SPRITE_ASSET_IDS.topHat,
+  SPRITE_ASSET_IDS.goldChain,
+]);
+
+function optionalAccessoryField(
+  body: Record<string, unknown>,
+  key: string,
+): { present: boolean; value: string | null } {
+  if (!Object.prototype.hasOwnProperty.call(body, key)) return { present: false, value: null };
+  const raw = body[key];
+  if (raw === null) return { present: true, value: null };
+  if (typeof raw !== "string" || !BAKED_ACCESSORY_IDS.has(raw)) {
+    throw new Error(`Invalid ${key}`);
+  }
+  return { present: true, value: raw };
+}
 import { inventoryRepository } from "../repositories/inventory.repository.js";
 import { itemsRepository } from "../repositories/items.repository.js";
 import {
@@ -78,24 +101,18 @@ export async function handleApiRequest(
       if (requestedThrowable && !isThrowableId(requestedThrowable)) {
         throw new Error("Invalid throwable");
       }
-      const hasFaceAccessory = Object.prototype.hasOwnProperty.call(body, "faceAccessoryId");
-      const requestedFace =
-        hasFaceAccessory && (body as { faceAccessoryId?: unknown }).faceAccessoryId === null
-          ? null
-          : stringField(body, "faceAccessoryId");
-      if (
-        requestedFace != null &&
-        requestedFace !== SPRITE_ASSET_IDS.sunglasses
-      ) {
-        throw new Error("Invalid face accessory");
-      }
+      const headAccessory = optionalAccessoryField(body as Record<string, unknown>, "headAccessoryId");
+      const faceAccessory = optionalAccessoryField(body as Record<string, unknown>, "faceAccessoryId");
+      const bodyAccessory = optionalAccessoryField(body as Record<string, unknown>, "bodyAccessoryId");
       const { usersRepository } = await import("../repositories/users.repository.js");
       await usersRepository.updateSafeProfile(tokenUser.uid, {
         displayName: stringField(body, "displayName") ?? profile.displayName,
         username: stringField(body, "username") ?? profile.username,
         baseAvatarId: requestedColor,
         throwableId: requestedThrowable,
-        ...(hasFaceAccessory ? { faceAccessoryId: requestedFace } : {}),
+        ...(headAccessory.present ? { headAccessoryId: headAccessory.value } : {}),
+        ...(faceAccessory.present ? { faceAccessoryId: faceAccessory.value } : {}),
+        ...(bodyAccessory.present ? { bodyAccessoryId: bodyAccessory.value } : {}),
       });
       json(res, 200, { profile: await getUserProfile(tokenUser.uid) });
       return true;

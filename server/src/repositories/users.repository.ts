@@ -44,7 +44,9 @@ export class UsersRepository {
       username?: string;
       baseAvatarId?: string;
       throwableId?: string;
+      headAccessoryId?: string | null;
       faceAccessoryId?: string | null;
+      bodyAccessoryId?: string | null;
     },
   ): Promise<void> {
     const next: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
@@ -52,8 +54,14 @@ export class UsersRepository {
     if (updates.username) next.username = updates.username.trim();
     if (updates.baseAvatarId) next["avatar.baseAvatarId"] = updates.baseAvatarId;
     if (updates.throwableId) next["avatar.throwableId"] = updates.throwableId;
+    if (updates.headAccessoryId !== undefined) {
+      next["avatar.headAccessoryId"] = updates.headAccessoryId;
+    }
     if (updates.faceAccessoryId !== undefined) {
       next["avatar.faceAccessoryId"] = updates.faceAccessoryId;
+    }
+    if (updates.bodyAccessoryId !== undefined) {
+      next["avatar.bodyAccessoryId"] = updates.bodyAccessoryId;
     }
     await this.doc(uid).update(next);
   }

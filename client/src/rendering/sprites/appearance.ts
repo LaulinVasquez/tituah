@@ -7,6 +7,7 @@ import {
   type ThrowableId,
 } from "@tituah/shared";
 import type { FighterFrame } from "./fighter-atlas.js";
+import { bakedAccessoryIdFromAvatar } from "./accessory-sheets.js";
 
 export type { FighterColor };
 
@@ -22,8 +23,8 @@ export interface AccessorySprite {
 export interface FighterAppearance {
   color: FighterColor;
   throwableId: ThrowableId;
-  /** Face slot — when a baked sheet exists, fighter-sprite swaps to it. */
-  faceAccessoryId: string | null;
+  /** Active baked accessory sheet id (head / face / body), if any. */
+  bakedAccessoryId: string | null;
   accessories: AccessorySprite[];
 }
 
@@ -59,17 +60,16 @@ export function colorVariantStyle(color: FighterColor): ColorVariantStyle {
 }
 
 export function appearanceKey(avatar: AvatarConfiguration | undefined): string {
-  const face = avatar?.faceAccessoryId ?? "";
-  return `${fighterColorFromId(avatar?.baseAvatarId)}:${throwableIdFromAvatar(avatar?.throwableId)}:${face}`;
+  const baked = bakedAccessoryIdFromAvatar(avatar) ?? "";
+  return `${fighterColorFromId(avatar?.baseAvatarId)}:${throwableIdFromAvatar(avatar?.throwableId)}:${baked}`;
 }
 
 export function appearanceFromAvatar(avatar: AvatarConfiguration | undefined): FighterAppearance {
   const config = avatar ?? emptyAvatar();
-  const faceAccessoryId = config.faceAccessoryId ?? null;
   return {
     color: fighterColorFromId(config.baseAvatarId),
     throwableId: throwableIdFromAvatar(config.throwableId),
-    faceAccessoryId,
+    bakedAccessoryId: bakedAccessoryIdFromAvatar(config),
     accessories: [],
   };
 }

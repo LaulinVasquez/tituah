@@ -12,8 +12,9 @@ import {
   type FighterAppearance,
 } from "./appearance.js";
 import {
-  bakedSheetForFaceAccessory,
-  type BAKED_FACE_ACCESSORY_SHEETS,
+  bakedSheetForAccessoryId,
+  normalizeAccessoryFrames,
+  type BakedAccessoryDefinition,
 } from "./accessory-sheets.js";
 import {
   FIGHTER_ANIMATIONS,
@@ -44,10 +45,16 @@ const THROW_CLIP_DURATION =
   FIGHTER_ANIMATIONS.throw.frames.length / FIGHTER_ANIMATIONS.throw.fps;
 
 type TextureSet = Record<FighterAnimation, Texture[]>;
-type BakedSheet = (typeof BAKED_FACE_ACCESSORY_SHEETS)[string];
 
 let texturePromise: Promise<TextureSet> | null = null;
-const bakedTextureCache = new Map<string, Promise<Partial<TextureSet>>>();
+const bakedTextureCache = new Map<
+  string,
+  Promise<{ textures: Partial<TextureSet>; frames: Partial<Record<FighterAnimation, readonly FighterFrame[]>> }>
+>();
+
+function bakedTextureCacheKey(baked: BakedAccessoryDefinition): string {
+  return `${baked.url}#normalized-v2`;
+}
 
 function sliceSheet(
   sheet: Texture,
@@ -87,18 +94,21 @@ function loadTextures(): Promise<TextureSet> {
   return texturePromise;
 }
 
-function loadBakedAccessoryTextures(baked: BakedSheet): Promise<Partial<TextureSet>> {
-  const cached = bakedTextureCache.get(baked.url);
+function loadBakedAccessoryTextures(
+  baked: BakedAccessoryDefinition,
+): Promise<{ textures: Partial<TextureSet>; frames: Partial<Record<FighterAnimation, readonly FighterFrame[]>> }> {
+  const cached = bakedTextureCache.get(bakedTextureCacheKey(baked));
   if (cached) return cached;
+  const normalizedFrames = normalizeAccessoryFrames(baked.frames);
   const promise = Assets.load<Texture>(baked.url).then((sheet) => {
-    const result: Partial<TextureSet> = {};
-    for (const [name, frames] of Object.entries(baked.frames)) {
-      if (!frames) continue;
-      result[name as FighterAnimation] = sliceSheet(sheet, frames);
+    const textures: Partial<TextureSet> = {};
+    for (const [name, frames] of Object.entries(normalizedFrames)) {
+      if (!frames?.length) continue;
+      textures[name as FighterAnimation] = sliceSheet(sheet, frames);
     }
-    return result;
+    return { textures, frames: normalizedFrames };
   });
-  bakedTextureCache.set(baked.url, promise);
+  bakedTextureCache.set(bakedTextureCacheKey(baked), promise);
   return promise;
 }
 
@@ -332,19 +342,30 @@ export class FighterSprite extends Container {
 
   private frameIndex(time: number): number {
     const definition = FIGHTER_ANIMATIONS[this.animation];
-    const frameCount = this.activeFrames(this.animation).length;
+    const frameCount = this.effectiveFrameCount(this.animation);
     const elapsedFrames = Math.max(0, Math.floor((time - this.animationStartedAt) * definition.fps));
     return definition.loop
       ? elapsedFrames % frameCount
       : Math.min(elapsedFrames, frameCount - 1);
   }
 
+  private effectiveFrameCount(animation: FighterAnimation): number {
+    const baseCount = FIGHTER_ANIMATIONS[animation].frames.length;
+    const textureCount = this.textures?.[animation]?.length ?? baseCount;
+    const activeCount = this.activeFrames(animation).length;
+    return Math.max(1, Math.min(baseCount, textureCount, activeCount));
+  }
+
   private setFrame(index: number, frame: FighterFrame, scale: number, facing: 1 | -1): void {
-    const sameFrame = index === this.lastFrameIndex && this.animation === this.lastFrameAnimation;
-    if (!sameFrame) {
-      this.sprite.texture = this.textures[this.animation][index];
+    const textures = this.textures[this.animation];
+    const safeIndex = textures?.length
+      ? Math.min(index, textures.length - 1)
+      : index;
+    const sameFrame = safeIndex === this.lastFrameIndex && this.animation === this.lastFrameAnimation;
+    if (!sameFrame && textures?.[safeIndex]) {
+      this.sprite.texture = textures[safeIndex];
     }
-    this.lastFrameIndex = index;
+    this.lastFrameIndex = safeIndex;
     this.lastFrameAnimation = this.animation;
 
     this.sprite.scale.set(scale * facing, scale);
@@ -407,11 +428,11 @@ export class FighterSprite extends Container {
     this.throwableId = throwableIdFromAvatar(player.avatar?.throwableId);
     this.lastFrameIndex = -1;
     this.lastFrameAnimation = null;
-    void this.applyBakedAccessorySheet(this.appearance.faceAccessoryId);
+    void this.applyBakedAccessorySheet(this.appearance.bakedAccessoryId);
   }
 
-  private async applyBakedAccessorySheet(faceAccessoryId: string | null): Promise<void> {
-    const baked = bakedSheetForFaceAccessory(faceAccessoryId);
+  private async applyBakedAccessorySheet(accessoryId: string | null): Promise<void> {
+    const baked = bakedSheetForAccessoryId(accessoryId);
     if (!baked) {
       this.textures = this.baseTextures;
       this.bakedFrames = null;
@@ -420,11 +441,10 @@ export class FighterSprite extends Container {
       return;
     }
     const requestKey = this.appearanceCacheKey;
-    const overrides = await loadBakedAccessoryTextures(baked);
-    // Drop stale loads if the player swapped accessories while waiting.
+    const { textures: overrides, frames } = await loadBakedAccessoryTextures(baked);
     if (requestKey !== this.appearanceCacheKey) return;
     this.textures = { ...this.baseTextures, ...overrides } as TextureSet;
-    this.bakedFrames = baked.frames;
+    this.bakedFrames = frames;
     this.lastFrameIndex = -1;
     this.lastFrameAnimation = null;
   }
@@ -432,6 +452,7 @@ export class FighterSprite extends Container {
   private setColorVariant(color: NonNullable<FighterAppearance>["color"]): void {
     if (color === this.colorKey) return;
     this.colorKey = color;
+
     const style = colorVariantStyle(color);
     if (style.hue == null && style.saturate == null && style.brightness == null) {
       this.sprite.filters = null;

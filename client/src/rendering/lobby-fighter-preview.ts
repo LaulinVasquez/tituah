@@ -588,6 +588,7 @@ export class LobbyFighterPreview {
     const token = this.demoToken + 1;
     this.demoToken = token;
     if (this.projectileSprite) this.projectileSprite.visible = false;
+    this.localFighter.resetForMatch();
     this.resetBody(this.localPlayer);
     this.cannedDemoActive = move !== "idle" && move !== "hit";
     if (move !== "run") audio.stop("run");

@@ -87,7 +87,7 @@ export class GameClient {
     this.ui.onSaveAvatar(() => void this.saveFighter());
     this.ui.onSelectColor((color) => this.persistColor(color));
     this.ui.onSelectThrowable((throwableId) => this.persistThrowable(throwableId));
-    this.ui.onSelectFaceAccessory((faceAccessoryId) => this.persistFaceAccessory(faceAccessoryId));
+    this.ui.onSelectFaceAccessory((accessoryId) => this.persistFaceAccessory(accessoryId));
     this.ui.onBackFromEdit(() => this.leaveEditor());
 
     authService.start();
@@ -267,7 +267,7 @@ export class GameClient {
     const name = this.ui.displayName("edit");
     const color = this.ui.fighterColor();
     const throwableId = this.ui.fighterThrowable();
-    const faceAccessoryId = this.ui.fighterFaceAccessory();
+    const accessoryId = this.ui.fighterAccessory();
     this.ui.rememberName(name);
 
     const profile = authService.profile;
@@ -276,12 +276,23 @@ export class GameClient {
       return;
     }
 
+    const accessoryPatch = {
+      headAccessoryId: null as string | null,
+      faceAccessoryId: null as string | null,
+      bodyAccessoryId: null as string | null,
+    };
+    if (accessoryId) {
+      const { BAKED_ACCESSORY_BY_ID } = await import("../rendering/sprites/accessory-sheets.js");
+      const def = BAKED_ACCESSORY_BY_ID[accessoryId];
+      if (def) accessoryPatch[def.field] = accessoryId;
+    }
+
     authService.patchProfile({ displayName: name });
     authService.patchAvatar({
       ...profile.avatar,
       baseAvatarId: color,
       throwableId,
-      faceAccessoryId,
+      ...accessoryPatch,
     });
 
     // Return to lobby immediately with the optimistic profile so a slow/failed
@@ -292,7 +303,12 @@ export class GameClient {
       await this.colorSave.catch(() => undefined);
       await this.throwableSave.catch(() => undefined);
       await this.faceAccessorySave.catch(() => undefined);
-      await authService.saveFighter({ displayName: name, baseAvatarId: color, throwableId, faceAccessoryId });
+      await authService.saveFighter({
+        displayName: name,
+        baseAvatarId: color,
+        throwableId,
+        ...accessoryPatch,
+      });
       if (!authService.user) return;
       void this.refreshPreview();
     } catch (error) {
@@ -319,12 +335,12 @@ export class GameClient {
       });
   }
 
-  private persistFaceAccessory(faceAccessoryId: string | null): void {
+  private persistFaceAccessory(accessoryId: string | null): void {
     if (!authService.profile) return;
     this.faceAccessorySave = this.faceAccessorySave
       .catch(() => undefined)
       .then(async () => {
-        await authService.persistFaceAccessory(faceAccessoryId);
+        await authService.persistFaceAccessory(accessoryId);
       });
   }
 

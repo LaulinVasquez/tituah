@@ -1011,7 +1011,7 @@ button.account-status[aria-expanded="true"] {
   display: block;
   position: relative;
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 1253 / 794;
   margin: 4px 0 18px;
   padding: 0;
   border-radius: 12px;
@@ -1029,17 +1029,17 @@ button.account-status[aria-expanded="true"] {
 }
 
 .egg-shelf .egg-colors .color-swatch {
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 /* Middle divider: in front of back-row eggs, behind front-row eggs */
 .egg-shelf::before {
   content: "";
   position: absolute;
-  left: 1.003%;
-  top: 44.322%;
-  width: 97.036%;
-  height: 32.093%;
+  left: 0.8%;
+  top: 44.94%;
+  width: 97.04%;
+  height: 50.68%;
   background: url("/assets/characters/eggshelve/eggshelve-tray-backrow_overlay.png") center / 100% 100% no-repeat;
   pointer-events: none;
   z-index: 2;
@@ -1049,10 +1049,10 @@ button.account-status[aria-expanded="true"] {
 .egg-shelf::after {
   content: "";
   position: absolute;
-  left: 0.04%;
-  top: 51.857%;
-  width: 99.64%;
-  height: 33.21%;
+  left: 0.8%;
+  top: 56.69%;
+  width: 98.52%;
+  height: 53.12%;
   background: url("/assets/characters/eggshelve/eggshelve-tray_front_overlay.png") center / 100% 100% no-repeat;
   pointer-events: none;
   z-index: 4;
@@ -1167,15 +1167,15 @@ button.account-status[aria-expanded="true"] {
 .egg-shelf .egg-face-accessories {
   /* Between throwables (lid) and egg cups */
   position: absolute;
-  left: 50%;
-  top: 40%;
-  width: 16%;
-  height: 9%;
+  left: 8%;
+  right: 8%;
+  top: 38%;
+  height: 11%;
   margin: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
-  transform: translate(-50%, -50%);
+  justify-content: space-between;
+  gap: 2px;
   z-index: 5;
   pointer-events: auto;
 }
@@ -1183,7 +1183,9 @@ button.account-status[aria-expanded="true"] {
 .egg-shelf .face-swatch {
   display: grid;
   place-items: center;
-  width: 100%;
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
   height: 100%;
   padding: 0;
   border: none;
@@ -1196,8 +1198,8 @@ button.account-status[aria-expanded="true"] {
 }
 
 .egg-shelf .face-swatch-icon {
-  width: min(100%, 96px);
-  height: min(100%, 56px);
+  width: min(100%, 56px);
+  height: min(100%, 48px);
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
@@ -1206,10 +1208,52 @@ button.account-status[aria-expanded="true"] {
 }
 
 .egg-shelf .face-swatch[data-face="sunglasses_01"] .face-swatch-icon {
-  /* Sunglasses from character-enhanced.png ACCESSORIES row @ 781,928 101×49 */
+  /* Sunglasses from character-enhanced.png @ 781,928 101×49 */
   background-image: url("/assets/characters/character-enhanced.png");
   background-size: 1520.79% 2089.8%;
   background-position: 54.43% 95.18%;
+}
+
+.egg-shelf .face-swatch[data-face="crown_01"] .face-swatch-icon {
+  /* Crown from character-enhanced.png @ 900,905 75×55 */
+  background-image: url("/assets/characters/character-enhanced.png");
+  background-size: 2048% 1861.82%;
+  background-position: 61.6% 93.4%;
+}
+
+.egg-shelf .face-swatch[data-face="red_bandana_01"] .face-swatch-icon {
+  /* Red Bandana from character-enhanced.png @ 980,900 105×70 */
+  background-image: url("/assets/characters/character-enhanced.png");
+  background-size: 1462.86% 1462.86%;
+  background-position: 68.48% 94.34%;
+}
+
+.egg-shelf .face-swatch[data-face="basic_cap_01"] .face-swatch-icon {
+  /* Black Cap from character-enhanced.png @ 1095,900 105×60 */
+  background-image: url("/assets/characters/character-enhanced.png");
+  background-size: 1462.86% 1706.67%;
+  background-position: 76.52% 93.36%;
+}
+
+.egg-shelf .face-swatch[data-face="blue_bandana_01"] .face-swatch-icon {
+  /* Blue Bandana from character-enhanced.png @ 1205,905 100×65 */
+  background-image: url("/assets/characters/character-enhanced.png");
+  background-size: 1536% 1575.38%;
+  background-position: 83.91% 94.37%;
+}
+
+.egg-shelf .face-swatch[data-face="top_hat_01"] .face-swatch-icon {
+  /* Top Hat from character-enhanced.png @ 1330,880 100×95 */
+  background-image: url("/assets/characters/character-enhanced.png");
+  background-size: 1536% 1077.89%;
+  background-position: 92.62% 94.73%;
+}
+
+.egg-shelf .face-swatch[data-face="gold_chain_01"] .face-swatch-icon {
+  /* Gold Chain from character-enhanced.png @ 1435,885 80×90 */
+  background-image: url("/assets/characters/character-enhanced.png");
+  background-size: 1920% 1137.78%;
+  background-position: 98.56% 94.75%;
 }
 
 .egg-shelf .face-swatch:hover .face-swatch-icon,
@@ -1230,8 +1274,8 @@ button.account-status[aria-expanded="true"] {
   position: absolute;
   left: 14%;
   right: 14%;
-  top: 12%;
-  height: 22%;
+  top: 7%;
+  height: 18%;
   margin: 0;
   display: flex;
   align-items: center;

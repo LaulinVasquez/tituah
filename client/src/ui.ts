@@ -2,7 +2,6 @@ import {
   FIGHTER_COLOR_HEX,
   FIGHTER_COLORS,
   FIGHTER_VARIANT_CUPS,
-  SPRITE_ASSET_IDS,
   THROWABLE_IDS,
   THROWABLE_LABELS,
   emptyAvatar,
@@ -22,6 +21,12 @@ import {
   type ThrowableId,
   type UserProfile,
 } from "@tituah/shared";
+import {
+  BAKED_ACCESSORIES,
+  BAKED_ACCESSORY_FIELDS,
+  bakedAccessoryIdFromAvatar,
+  isBakedAccessoryId,
+} from "./rendering/sprites/accessory-sheets.js";
 import type { GameState } from "./game/game-state.js";
 import {
   LobbyFighterPreview,
@@ -111,10 +116,10 @@ export class Ui {
   private accountTipOpen = false;
   private selectedColor: FighterColor = "orange";
   private selectedThrowable: ThrowableId = "sandal";
-  private selectedFaceAccessoryId: string | null = null;
+  private selectedAccessoryId: string | null = null;
   private onColorSelected: (color: FighterColor) => void = () => undefined;
   private onThrowableSelected: (throwableId: ThrowableId) => void = () => undefined;
-  private onFaceAccessorySelected: (faceAccessoryId: string | null) => void = () => undefined;
+  private onAccessorySelected: (accessoryId: string | null) => void = () => undefined;
   private profile: UserProfile | null = null;
   private fighter?: LobbyFighterPreview;
   private selectedStage: StageId = "barnyard";
@@ -199,9 +204,10 @@ export class Ui {
     this.faceAccessoryGrid.addEventListener("click", (event) => {
       const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-face]");
       if (!button || button.disabled || this.slapping) return;
-      const faceId = button.dataset.face || null;
-      const next = this.selectedFaceAccessoryId === faceId ? null : faceId;
-      void this.selectFaceAccessory(next, true);
+      const faceId = button.dataset.face;
+      if (!faceId || !isBakedAccessoryId(faceId)) return;
+      const next = this.selectedAccessoryId === faceId ? null : faceId;
+      void this.selectAccessory(next, true);
     });
     this.selectStage(this.selectedStage);
     this.selectPlayerCount(this.selectedPlayerCount);
@@ -393,7 +399,7 @@ export class Ui {
     if (this.pane !== "edit") this.paneBeforeEdit = this.pane;
     this.selectedColor = fighterColorFromId(profile?.avatar.baseAvatarId);
     this.selectedThrowable = throwableIdFromAvatar(profile?.avatar.throwableId);
-    this.selectedFaceAccessoryId = profile?.avatar.faceAccessoryId ?? null;
+    this.selectedAccessoryId = bakedAccessoryIdFromAvatar(profile?.avatar);
     this.setPreview(profile, guestSession, accountEmail);
     this.displayNameInput.value = profile?.displayName ?? "";
     this.setPane("edit");
@@ -412,8 +418,8 @@ export class Ui {
     return this.selectedThrowable;
   }
 
-  fighterFaceAccessory(): string | null {
-    return this.selectedFaceAccessoryId;
+  fighterAccessory(): string | null {
+    return this.selectedAccessoryId;
   }
 
   closeEditor(): void {
@@ -765,8 +771,8 @@ export class Ui {
     this.onThrowableSelected = handler;
   }
 
-  onSelectFaceAccessory(handler: (faceAccessoryId: string | null) => void): void {
-    this.onFaceAccessorySelected = handler;
+  onSelectFaceAccessory(handler: (accessoryId: string | null) => void): void {
+    this.onAccessorySelected = handler;
   }
 
   rememberName(explicit?: string): void {
@@ -998,18 +1004,20 @@ export class Ui {
     this.faceAccessoryGrid.replaceChildren();
     if (!profile) return;
 
-    this.selectedFaceAccessoryId = profile.avatar.faceAccessoryId ?? null;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "face-swatch";
-    button.dataset.face = SPRITE_ASSET_IDS.sunglasses;
-    button.setAttribute("aria-label", "Sunglasses");
-    button.title = "Sunglasses";
-    const icon = document.createElement("span");
-    icon.className = "face-swatch-icon";
-    icon.setAttribute("aria-hidden", "true");
-    button.append(icon);
-    this.faceAccessoryGrid.append(button);
+    this.selectedAccessoryId = bakedAccessoryIdFromAvatar(profile.avatar);
+    for (const accessory of BAKED_ACCESSORIES) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "face-swatch";
+      button.dataset.face = accessory.id;
+      button.setAttribute("aria-label", accessory.label);
+      button.title = accessory.label;
+      const icon = document.createElement("span");
+      icon.className = "face-swatch-icon";
+      icon.setAttribute("aria-hidden", "true");
+      button.append(icon);
+      this.faceAccessoryGrid.append(button);
+    }
     this.syncFaceAccessoryButtons();
   }
 
@@ -1033,23 +1041,38 @@ export class Ui {
 
   private syncFaceAccessoryButtons(): void {
     for (const button of this.faceAccessoryGrid.querySelectorAll<HTMLButtonElement>("[data-face]")) {
-      const selected = button.dataset.face === this.selectedFaceAccessoryId;
+      const selected = button.dataset.face === this.selectedAccessoryId;
       button.dataset.selected = String(selected);
       button.setAttribute("aria-checked", String(selected));
       button.setAttribute("role", "radio");
     }
   }
 
+  private avatarWithLoadout(overrides: {
+    baseAvatarId?: string;
+    throwableId?: ThrowableId;
+    accessoryId?: string | null;
+  }) {
+    const accessoryId =
+      overrides.accessoryId !== undefined ? overrides.accessoryId : this.selectedAccessoryId;
+    const next = {
+      ...(this.profile?.avatar ?? emptyAvatar()),
+      baseAvatarId: overrides.baseAvatarId ?? this.selectedColor,
+      throwableId: overrides.throwableId ?? this.selectedThrowable,
+    };
+    for (const field of BAKED_ACCESSORY_FIELDS) next[field] = null;
+    if (accessoryId) {
+      const def = BAKED_ACCESSORIES.find((accessory) => accessory.id === accessoryId);
+      if (def) next[def.field] = accessoryId;
+    }
+    return next;
+  }
+
   private async selectColor(color: FighterColor, animate = false): Promise<void> {
     if (color === this.selectedColor) return;
     this.selectedColor = color;
     this.syncColorButtons();
-    const avatar = {
-      ...(this.profile?.avatar ?? emptyAvatar()),
-      baseAvatarId: color,
-      throwableId: this.selectedThrowable,
-      faceAccessoryId: this.selectedFaceAccessoryId,
-    };
+    const avatar = this.avatarWithLoadout({ baseAvatarId: color });
     if (this.profile) this.profile = { ...this.profile, avatar };
     this.onColorSelected(color);
     if (!animate) {
@@ -1069,12 +1092,7 @@ export class Ui {
     if (throwableId === this.selectedThrowable) return;
     this.selectedThrowable = throwableId;
     this.syncThrowableButtons();
-    const avatar = {
-      ...(this.profile?.avatar ?? emptyAvatar()),
-      baseAvatarId: this.selectedColor,
-      throwableId,
-      faceAccessoryId: this.selectedFaceAccessoryId,
-    };
+    const avatar = this.avatarWithLoadout({ throwableId });
     if (this.profile) this.profile = { ...this.profile, avatar };
     this.onThrowableSelected(throwableId);
     this.fighter?.setAvatar(avatar);
@@ -1089,18 +1107,13 @@ export class Ui {
     this.slapping = false;
   }
 
-  private async selectFaceAccessory(faceAccessoryId: string | null, animate = false): Promise<void> {
-    if (faceAccessoryId === this.selectedFaceAccessoryId) return;
-    this.selectedFaceAccessoryId = faceAccessoryId;
+  private async selectAccessory(accessoryId: string | null, animate = false): Promise<void> {
+    if (accessoryId === this.selectedAccessoryId) return;
+    this.selectedAccessoryId = accessoryId;
     this.syncFaceAccessoryButtons();
-    const avatar = {
-      ...(this.profile?.avatar ?? emptyAvatar()),
-      baseAvatarId: this.selectedColor,
-      throwableId: this.selectedThrowable,
-      faceAccessoryId,
-    };
+    const avatar = this.avatarWithLoadout({ accessoryId });
     if (this.profile) this.profile = { ...this.profile, avatar };
-    this.onFaceAccessorySelected(faceAccessoryId);
+    this.onAccessorySelected(accessoryId);
     this.fighter?.setAvatar(avatar);
     if (!animate) return;
     const request = ++this.editPreviewToken;
